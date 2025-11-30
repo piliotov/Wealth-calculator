@@ -1,0 +1,5 @@
+{
+  "name": "WealthTracker AI",
+  "description": "A local-first, privacy-focused personal finance tracker with an AI CFO powered by Gemini.",
+  "requestFramePermissions": []
+}
