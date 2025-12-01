@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { TransactionType, Account } from '../types';
 import { PlusCircle, Loader2 } from 'lucide-react';
+import { useToast } from './ToastContainer';
 
 interface Props {
   accounts: Account[];
@@ -14,6 +15,7 @@ const TransactionForm: React.FC<Props> = ({ accounts, onAdd }) => {
   const [category, setCategory] = useState('Food');
   const [description, setDescription] = useState('');
   const [loading, setLoading] = useState(false);
+  const { showToast } = useToast();
 
   // Update account selection if accounts change and current selection is invalid
   React.useEffect(() => {
@@ -21,6 +23,11 @@ const TransactionForm: React.FC<Props> = ({ accounts, onAdd }) => {
       setAccountId(accounts[0].id);
     }
   }, [accounts, accountId]);
+
+  // Update category when type changes
+  React.useEffect(() => {
+    setCategory(type === 'income' ? 'Salary' : 'Food');
+  }, [type]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,11 +49,14 @@ const TransactionForm: React.FC<Props> = ({ accounts, onAdd }) => {
     setLoading(false);
     setAmount('');
     setDescription('');
+    // Reset category to default for the current type
+    setCategory(type === 'income' ? 'Salary' : 'Food');
+    showToast(`${type === 'income' ? 'Income' : 'Expense'} added successfully`, 'success');
   };
 
   const categories = type === 'income' 
-    ? ['Salary', 'Freelance', 'Investment', 'Other'] 
-    : ['Food', 'Housing', 'Transport', 'Entertainment', 'Utilities', 'Shopping', 'Health', 'Travel', 'Other'];
+    ? ['Salary', 'Freelance', 'Investment', 'Transfer In', 'Loan Received', 'Other'] 
+    : ['Food', 'Housing', 'Transport', 'Entertainment', 'Utilities', 'Shopping', 'Health', 'Travel', 'Transfer Out', 'Loan Given', 'Other'];
 
   return (
     <div className="bg-surface p-6 rounded-xl shadow-lg border border-slate-700">

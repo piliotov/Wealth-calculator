@@ -2,10 +2,13 @@ import React, { useEffect, useState } from 'react';
 import Auth from './components/Auth';
 import Dashboard from './components/Dashboard';
 import TransactionForm from './components/TransactionForm';
+import TransferForm from './components/TransferForm';
+import LendingTracker from './components/LendingTracker';
 import FloatingAIChat from './components/AIChat';
 import SalaryCalculator from './components/SalaryCalculator';
 import Profile from './components/Profile';
-import { getCurrentUser, logoutUser, getTransactions, addTransaction, getAccounts } from './services/localDb';
+import { ToastContainer } from './components/ToastContainer';
+import { getCurrentUser, logoutUser, getTransactions, addTransaction, getAccounts, transferMoney } from './services/api';
 import { User, Transaction, Account, AppView } from './types';
 import { LayoutDashboard, LogOut, Receipt, Calculator, User as UserIcon } from 'lucide-react';
 
@@ -25,8 +28,8 @@ const App: React.FC = () => {
   }, []);
 
   const loadData = async (userId: string) => {
-    const tx = await getTransactions(userId);
-    const acc = await getAccounts(userId);
+    const tx = await getTransactions();
+    const acc = await getAccounts();
     setTransactions(tx);
     setAccounts(acc);
   };
@@ -49,7 +52,13 @@ const App: React.FC = () => {
 
   const handleAddTransaction = async (data: any) => {
     if (!user) return;
-    await addTransaction(user.id, data);
+    await addTransaction(data);
+    setRefreshKey(prev => prev + 1);
+  };
+
+  const handleTransfer = async (data: any) => {
+    if (!user) return;
+    await transferMoney(data);
     setRefreshKey(prev => prev + 1);
   };
 
@@ -69,10 +78,15 @@ const App: React.FC = () => {
   );
 
   if (!user) {
-    return <Auth onLogin={handleLogin} />;
+    return (
+      <ToastContainer>
+        <Auth onLogin={handleLogin} />
+      </ToastContainer>
+    );
   }
 
   return (
+    <ToastContainer>
     <div className="min-h-screen bg-background text-slate-100 font-sans">
       {/* Navbar */}
       <nav className="border-b border-slate-700 bg-surface/50 backdrop-blur-md sticky top-0 z-40">
@@ -120,6 +134,8 @@ const App: React.FC = () => {
         <div className={`grid grid-cols-1 lg:grid-cols-12 gap-8 ${view === AppView.DASHBOARD ? 'block' : 'hidden'}`}>
           <div className="lg:col-span-4 space-y-6">
                <TransactionForm accounts={accounts} onAdd={handleAddTransaction} />
+               <TransferForm accounts={accounts} onTransfer={handleTransfer} />
+               <LendingTracker accounts={accounts} onAddLoan={handleAddTransaction} />
           </div>
           <div className="lg:col-span-8">
             <Dashboard 
@@ -145,6 +161,7 @@ const App: React.FC = () => {
 
       </main>
     </div>
+    </ToastContainer>
   );
 };
 

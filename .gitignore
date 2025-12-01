@@ -22,3 +22,32 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Environment variables (contains API keys)
+.env
+.env.local
+.env.*.local
+
+# Database (contains personal financial data)
+server/finance.db
+server/finance.db-journal
+server/finance.db-shm
+server/finance.db-wal
+server/*.db
+server/*.db-*
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# Backup files
+*.backup
+*.bak
+*.tmp
+*~
+
+# Optional: Deprecated files
+services/localDb.ts
+services/geminiService.ts

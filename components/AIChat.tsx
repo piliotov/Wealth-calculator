@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { generateFinancialAdvice } from '../services/geminiService';
-import { getLast30DaysTransactions, getChatHistory, saveChatHistory } from '../services/localDb';
+import { sendChatMessage } from '../services/api';
 import { User, Account, ChatMessage } from '../types';
 import { Bot, Send, User as UserIcon, Loader2, Sparkles, X, MessageSquareText, Trash2 } from 'lucide-react';
 
@@ -16,26 +15,25 @@ const FloatingAIChat: React.FC<Props> = ({ user, accounts }) => {
   const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Load history on mount
+  // Initialize with welcome message
   useEffect(() => {
-    getChatHistory(user.id).then(history => {
-      if (history.length > 0) {
-        setMessages(history);
-      } else {
-        setMessages([{
-          id: 'init',
-          role: 'assistant',
-          text: `Hello ${user.username}! I'm your Virtual CFO. I have access to your account balances and recent transaction history.`,
-          timestamp: Date.now()
-        }]);
-      }
-    });
+    const storedHistory = localStorage.getItem(`chat_${user.id}`);
+    if (storedHistory) {
+      setMessages(JSON.parse(storedHistory));
+    } else {
+      setMessages([{
+        id: 'init',
+        role: 'assistant',
+        text: `Hello ${user.username}! I'm your Virtual CFO. I have access to your account balances and recent transaction history.`,
+        timestamp: Date.now()
+      }]);
+    }
   }, [user.id, user.username]);
 
-  // Save history on update
+  // Save history to localStorage on update
   useEffect(() => {
     if (messages.length > 0) {
-      saveChatHistory(user.id, messages);
+      localStorage.setItem(`chat_${user.id}`, JSON.stringify(messages));
     }
   }, [messages, user.id]);
 
@@ -64,8 +62,7 @@ const FloatingAIChat: React.FC<Props> = ({ user, accounts }) => {
     setLoading(true);
 
     try {
-      const transactions = await getLast30DaysTransactions(user.id);
-      const responseText = await generateFinancialAdvice(transactions, accounts, userMsg.text);
+      const responseText = await sendChatMessage(userMsg.text);
       
       const botMsg: ChatMessage = { 
         id: crypto.randomUUID(), 
@@ -74,11 +71,11 @@ const FloatingAIChat: React.FC<Props> = ({ user, accounts }) => {
         timestamp: Date.now()
       };
       setMessages(prev => [...prev, botMsg]);
-    } catch (err) {
+    } catch (err: any) {
       setMessages(prev => [...prev, { 
         id: crypto.randomUUID(), 
         role: 'assistant', 
-        text: 'Sorry, I had trouble connecting to the financial brain. Please try again.',
+        text: `Sorry, I had trouble connecting: ${err.message || 'Please try again.'}`,
         timestamp: Date.now()
       }]);
     } finally {
@@ -94,7 +91,7 @@ const FloatingAIChat: React.FC<Props> = ({ user, accounts }) => {
       timestamp: Date.now()
     }];
     setMessages(freshStart);
-    saveChatHistory(user.id, freshStart);
+    localStorage.setItem(`chat_${user.id}`, JSON.stringify(freshStart));
   };
 
   return (

@@ -1,8 +1,10 @@
 import React, { useMemo, useState } from 'react';
 import { Transaction, Account, EXCHANGE_RATES, TransactionType } from '../types';
 import { PieChart, Pie, Cell, ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
-import { Wallet, TrendingUp, Building2, Pencil, X, Save } from 'lucide-react';
-import { updateTransaction } from '../services/localDb';
+import { Wallet, TrendingUp, Building2, Pencil, X, Save, Trash2, Check } from 'lucide-react';
+import { updateTransaction, deleteTransaction, addTransaction } from '../services/api';
+import { useToast } from './ToastContainer';
+import ConfirmDialog from './ConfirmDialog';
 
 interface Props {
   transactions: Transaction[];
@@ -14,6 +16,8 @@ const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'
 
 const Dashboard: React.FC<Props> = ({ transactions, accounts, onUpdate }) => {
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<{ isOpen: boolean; txId?: number; loan?: Transaction } | null>(null);
+  const { showToast } = useToast();
   
   const stats = useMemo(() => {
     // 1. Calculate Net Worth in EUR
@@ -34,14 +38,23 @@ const Dashboard: React.FC<Props> = ({ transactions, accounts, onUpdate }) => {
       return acc + (t.amount * rate);
     }, 0);
 
-    // 3. Category Breakdown (Expenses)
+    // 3. Category Breakdown (Expenses) - Exclude transfers
     const categories: Record<string, number> = {};
-    transactions.filter(t => t.type === 'expense').forEach(t => {
+    transactions.filter(t => t.type === 'expense' && t.category !== 'Transfer Out').forEach(t => {
       const rate = t.currency === 'BGN' ? (1/EXCHANGE_RATES.BGN) : t.currency === 'USD' ? (1/EXCHANGE_RATES.USD) : 1;
       categories[t.category] = (categories[t.category] || 0) + (t.amount * rate);
     });
     
     const pieData = Object.entries(categories).map(([name, value]) => ({ name, value }));
+
+    // 3b. Income Categories - Exclude transfers
+    const incomeCategories: Record<string, number> = {};
+    transactions.filter(t => t.type === 'income' && t.category !== 'Transfer In').forEach(t => {
+      const rate = t.currency === 'BGN' ? (1/EXCHANGE_RATES.BGN) : t.currency === 'USD' ? (1/EXCHANGE_RATES.USD) : 1;
+      incomeCategories[t.category] = (incomeCategories[t.category] || 0) + (t.amount * rate);
+    });
+    
+    const incomePieData = Object.entries(incomeCategories).map(([name, value]) => ({ name, value }));
 
     // 4. Timeline Data
     const sortedTx = [...transactions].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
@@ -63,7 +76,8 @@ const Dashboard: React.FC<Props> = ({ transactions, accounts, onUpdate }) => {
       income, 
       expenses, 
       netWorthEUR: totalNetWorthEUR, 
-      pieData, 
+      pieData,
+      incomePieData, 
       chartData: historyPoints.reverse() 
     };
   }, [transactions, accounts]);
@@ -74,9 +88,52 @@ const Dashboard: React.FC<Props> = ({ transactions, accounts, onUpdate }) => {
   const handleEditSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (editingTx) {
-        await updateTransaction(editingTx.userId, editingTx);
+        await updateTransaction(editingTx.id, {
+          accountId: editingTx.accountId,
+          type: editingTx.type,
+          category: editingTx.category,
+          amount: editingTx.amount,
+          currency: editingTx.currency,
+          date: editingTx.date,
+          description: editingTx.description
+        });
         setEditingTx(null);
         onUpdate();
+        showToast('Transaction updated successfully', 'success');
+    }
+  };
+
+  const handleDelete = async (txId: number) => {
+    setConfirmDialog({ isOpen: true, txId });
+  };
+
+  const confirmDelete = async () => {
+    if (confirmDialog?.txId) {
+      await deleteTransaction(confirmDialog.txId);
+      onUpdate();
+      showToast('Transaction deleted successfully', 'success');
+    }
+  };
+
+  const handleRepayLoan = async (loan: Transaction) => {
+    setConfirmDialog({ isOpen: true, loan });
+  };
+
+  const confirmRepayLoan = async () => {
+    if (confirmDialog?.loan) {
+      const loan = confirmDialog.loan;
+      const isLent = loan.category === 'Loan Given';
+      await addTransaction({
+        accountId: loan.accountId,
+        type: isLent ? 'income' : 'expense',
+        category: isLent ? 'Loan Repaid (Received)' : 'Loan Repaid (Paid)',
+        amount: loan.amount,
+        currency: loan.currency,
+        date: new Date().toISOString(),
+        description: `Repayment: ${loan.description}`
+      });
+      onUpdate();
+      showToast(`Loan marked as repaid`, 'success');
     }
   };
 
@@ -116,10 +173,10 @@ const Dashboard: React.FC<Props> = ({ transactions, accounts, onUpdate }) => {
       </div>
 
       {/* Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-8">
         
         {/* Net Worth Chart */}
-        <div className="bg-surface p-6 rounded-xl border border-slate-700 shadow-sm">
+        <div className="bg-surface p-6 rounded-xl border border-slate-700 shadow-sm lg:col-span-3">
           <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
             <TrendingUp className="w-4 h-4 text-primary" />
             Net Worth Trend (EUR)
@@ -146,8 +203,51 @@ const Dashboard: React.FC<Props> = ({ transactions, accounts, onUpdate }) => {
           </div>
         </div>
 
-        {/* Expense Categories */}
+        {/* Income Distribution */}
         <div className="bg-surface p-6 rounded-xl border border-slate-700 shadow-sm">
+          <h3 className="text-lg font-semibold text-white mb-4">Income Distribution</h3>
+          <div className="h-64 w-full flex items-center justify-center">
+            {stats.incomePieData.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={stats.incomePieData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={60}
+                    outerRadius={80}
+                    fill="#8884d8"
+                    paddingAngle={5}
+                    dataKey="value"
+                    label={false}
+                  >
+                    {stats.incomePieData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip 
+                     contentStyle={{ backgroundColor: '#1e293b', borderColor: '#475569', color: '#fff' }}
+                     formatter={(value: number) => formatEUR(value)}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <p className="text-slate-500">No income recorded yet.</p>
+            )}
+          </div>
+          {/* Legend */}
+          <div className="flex flex-wrap gap-3 mt-4 justify-center">
+            {stats.incomePieData.map((entry, index) => (
+              <div key={entry.name} className="flex items-center gap-1 text-xs text-slate-300">
+                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }}></div>
+                {entry.name}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Expense Categories */}
+        <div className="bg-surface p-6 rounded-xl border border-slate-700 shadow-sm lg:col-span-2">
           <h3 className="text-lg font-semibold text-white mb-4">Expense Distribution</h3>
           <div className="h-64 w-full flex items-center justify-center">
             {stats.pieData.length > 0 ? (
@@ -196,11 +296,20 @@ const Dashboard: React.FC<Props> = ({ transactions, accounts, onUpdate }) => {
             <h3 className="font-semibold text-sm text-slate-300">Detailed Activity</h3>
         </div>
         <div className="max-h-[500px] overflow-y-auto">
-            {transactions.map(t => (
+            {transactions.map(t => {
+              const isLoan = t.category === 'Loan Given' || t.category === 'Loan Received';
+              return (
             <div key={t.id} className="p-4 border-b border-slate-700/50 last:border-0 hover:bg-slate-700/30 transition-colors group">
                 <div className="flex justify-between items-center">
                 <div className="flex-1">
-                    <p className="text-white text-sm font-medium">{t.category}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-white text-sm font-medium">{t.category}</p>
+                      {isLoan && (
+                        <span className="text-xs bg-orange-500/20 text-orange-400 px-2 py-0.5 rounded-full border border-orange-500/30">
+                          {t.category === 'Loan Given' ? '💸 Lent' : '💰 Borrowed'}
+                        </span>
+                      )}
+                    </div>
                     <p className="text-xs text-slate-500">{t.description || 'No description'}</p>
                     <div className="flex items-center gap-2 mt-1">
                     <span className="text-xs text-slate-400 bg-slate-800 px-1.5 rounded">
@@ -209,20 +318,39 @@ const Dashboard: React.FC<Props> = ({ transactions, accounts, onUpdate }) => {
                     <span className="text-xs text-slate-600">{new Date(t.date).toLocaleDateString()}</span>
                     </div>
                 </div>
-                <div className="flex items-center gap-4">
-                    <span className={`text-sm font-bold ${t.type === 'income' ? 'text-emerald-400' : 'text-red-400'}`}>
+                <div className="flex items-center gap-2">
+                    <span className={`text-sm font-bold text-right min-w-[110px] ${t.type === 'income' ? 'text-emerald-400' : 'text-red-400'}`}>
                         {t.type === 'income' ? '+' : '-'}{t.amount.toFixed(2)} {t.currency}
                     </span>
-                    <button 
-                        onClick={() => setEditingTx(t)}
-                        className="opacity-0 group-hover:opacity-100 p-2 text-slate-400 hover:text-white transition-opacity bg-slate-800 rounded-full"
-                    >
-                        <Pencil className="w-4 h-4" />
-                    </button>
+                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity min-w-[140px] justify-end">
+                      {isLoan && (
+                        <button 
+                          onClick={() => handleRepayLoan(t)}
+                          className="p-2 text-slate-400 hover:text-emerald-400 bg-slate-800 rounded-full"
+                          title="Mark as Repaid"
+                        >
+                          <Check className="w-4 h-4" />
+                        </button>
+                      )}
+                      <button 
+                          onClick={() => setEditingTx(t)}
+                          className="p-2 text-slate-400 hover:text-white bg-slate-800 rounded-full"
+                          title="Edit"
+                      >
+                          <Pencil className="w-4 h-4" />
+                      </button>
+                      <button 
+                          onClick={() => handleDelete(t.id)}
+                          className="p-2 text-slate-400 hover:text-red-400 bg-slate-800 rounded-full"
+                          title="Delete"
+                      >
+                          <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                 </div>
                 </div>
             </div>
-            ))}
+            )})}
         </div>
       </div>
 
@@ -274,6 +402,21 @@ const Dashboard: React.FC<Props> = ({ transactions, accounts, onUpdate }) => {
             </div>
         </div>
       )}
+
+      {/* Confirm Dialog */}
+      <ConfirmDialog
+        isOpen={confirmDialog?.isOpen || false}
+        title={confirmDialog?.loan ? 'Mark Loan as Repaid?' : 'Delete Transaction?'}
+        message={
+          confirmDialog?.loan
+            ? `This will ${confirmDialog.loan.category === 'Loan Given' ? 'add' : 'deduct'} ${confirmDialog.loan.amount} ${confirmDialog.loan.currency} ${confirmDialog.loan.category === 'Loan Given' ? 'to' : 'from'} your account to reflect the repayment.`
+            : 'This will permanently delete the transaction and update your account balance accordingly.'
+        }
+        confirmText={confirmDialog?.loan ? 'Mark as Repaid' : 'Delete'}
+        onConfirm={confirmDialog?.loan ? confirmRepayLoan : confirmDelete}
+        onCancel={() => setConfirmDialog(null)}
+        type={confirmDialog?.loan ? 'info' : 'danger'}
+      />
     </div>
   );
 };

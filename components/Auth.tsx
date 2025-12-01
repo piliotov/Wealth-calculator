@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { loginUser, registerUser } from '../services/localDb';
+import { loginUser, registerUser } from '../services/api';
 import { User } from '../types';
 import { Lock, User as UserIcon, LogIn, ArrowRight } from 'lucide-react';
 
@@ -20,13 +20,13 @@ const Auth: React.FC<Props> = ({ onLogin }) => {
     setLoading(true);
 
     try {
-      let user;
+      let result;
       if (isRegister) {
-        user = await registerUser(username, password);
+        result = await registerUser(username, password);
       } else {
-        user = await loginUser(username, password);
+        result = await loginUser(username, password);
       }
-      onLogin(user);
+      onLogin(result.user);
     } catch (err: any) {
       setError(err.message || 'An error occurred');
     } finally {

@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { Account, User } from '../types';
 import { Settings, Plus, Trash2, RefreshCw, Save } from 'lucide-react';
-import { createAccount, updateAccountBalance, deleteAccount } from '../services/localDb';
+import { createAccount, updateAccountBalance, deleteAccount } from '../services/api';
+import { useToast } from './ToastContainer';
+import ConfirmDialog from './ConfirmDialog';
 
 interface Props {
   user: User;
@@ -17,19 +19,30 @@ const Profile: React.FC<Props> = ({ user, accounts, onUpdate }) => {
   // Edit State
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editBalance, setEditBalance] = useState<string>('');
+  
+  // Confirm Dialog
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const { showToast } = useToast();
 
   const handleCreateAccount = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newAccName) return;
-    await createAccount(user.id, newAccName, newAccCurrency);
+    await createAccount(newAccName, newAccCurrency);
     setNewAccName('');
     onUpdate();
+    showToast(`Account "${newAccName}" created successfully`, 'success');
   };
 
   const handleDelete = async (id: string) => {
-    if (confirm('Are you sure you want to delete this account? Transactions will remain but unlinked.')) {
-      await deleteAccount(id);
+    setConfirmDelete(id);
+  };
+
+  const confirmDeleteAccount = async () => {
+    if (confirmDelete) {
+      await deleteAccount(confirmDelete);
       onUpdate();
+      showToast('Account deleted successfully', 'success');
+      setConfirmDelete(null);
     }
   };
 
@@ -42,6 +55,7 @@ const Profile: React.FC<Props> = ({ user, accounts, onUpdate }) => {
     await updateAccountBalance(id, parseFloat(editBalance));
     setEditingId(null);
     onUpdate();
+    showToast('Balance updated successfully', 'success');
   };
 
   return (
@@ -149,6 +163,17 @@ const Profile: React.FC<Props> = ({ user, accounts, onUpdate }) => {
             </div>
         </form>
       </div>
+
+      {/* Confirm Delete Dialog */}
+      <ConfirmDialog
+        isOpen={!!confirmDelete}
+        title="Delete Account?"
+        message="Are you sure you want to delete this account? Transactions will remain but will be unlinked from this account."
+        confirmText="Delete Account"
+        onConfirm={confirmDeleteAccount}
+        onCancel={() => setConfirmDelete(null)}
+        type="danger"
+      />
     </div>
   );
 };
