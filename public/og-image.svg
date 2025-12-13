@@ -1,0 +1,70 @@
+<svg width="1200" height="630" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="1200" height="630" fill="#0f172a"/>
+  
+  <!-- Grid pattern -->
+  <defs>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="1"/>
+    </pattern>
+  </defs>
+  <rect width="1200" height="630" fill="url(#grid)"/>
+  
+  <!-- Gradient overlay -->
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#14b8a6;stop-opacity:0.1" />
+      <stop offset="100%" style="stop-color:#3b82f6;stop-opacity:0.05" />
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#grad)"/>
+  
+  <!-- Chart visualization -->
+  <g opacity="0.3">
+    <!-- Bar chart -->
+    <rect x="100" y="420" width="60" height="120" fill="#14b8a6" rx="4"/>
+    <rect x="180" y="380" width="60" height="160" fill="#14b8a6" rx="4"/>
+    <rect x="260" y="350" width="60" height="190" fill="#14b8a6" rx="4"/>
+    <rect x="340" y="320" width="60" height="220" fill="#3b82f6" rx="4"/>
+    <rect x="420" y="280" width="60" height="260" fill="#3b82f6" rx="4"/>
+    
+    <!-- Line chart -->
+    <polyline points="600,450 700,380 800,420 900,320 1000,360 1100,280" 
+              fill="none" stroke="#14b8a6" stroke-width="4" stroke-linecap="round"/>
+    <circle cx="600" cy="450" r="8" fill="#14b8a6"/>
+    <circle cx="700" cy="380" r="8" fill="#14b8a6"/>
+    <circle cx="800" cy="420" r="8" fill="#14b8a6"/>
+    <circle cx="900" cy="320" r="8" fill="#3b82f6"/>
+    <circle cx="1000" cy="360" r="8" fill="#3b82f6"/>
+    <circle cx="1100" cy="280" r="8" fill="#3b82f6"/>
+  </g>
+  
+  <!-- Icon -->
+  <circle cx="150" cy="140" r="70" fill="#14b8a6" opacity="0.2"/>
+  <text x="150" y="175" font-size="80" text-anchor="middle">💰</text>
+  
+  <!-- Main text -->
+  <text x="270" y="140" font-family="system-ui, -apple-system, sans-serif" font-size="72" font-weight="bold" fill="#ffffff">
+    ProsperPilot
+  </text>
+  
+  <!-- Tagline -->
+  <text x="270" y="200" font-family="system-ui, -apple-system, sans-serif" font-size="32" fill="#94a3b8">
+    Smart Personal Finance Tracker
+  </text>
+  
+  <!-- Features -->
+  <g transform="translate(100, 260)">
+    <text x="0" y="0" font-family="system-ui, -apple-system, sans-serif" font-size="24" fill="#14b8a6">✓</text>
+    <text x="40" y="0" font-family="system-ui, -apple-system, sans-serif" font-size="24" fill="#e2e8f0">AI-Powered Insights</text>
+    
+    <text x="400" y="0" font-family="system-ui, -apple-system, sans-serif" font-size="24" fill="#14b8a6">✓</text>
+    <text x="440" y="0" font-family="system-ui, -apple-system, sans-serif" font-size="24" fill="#e2e8f0">Multi-Currency Support</text>
+    
+    <text x="800" y="0" font-family="system-ui, -apple-system, sans-serif" font-size="24" fill="#14b8a6">✓</text>
+    <text x="840" y="0" font-family="system-ui, -apple-system, sans-serif" font-size="24" fill="#e2e8f0">Budget Tracking</text>
+  </g>
+  
+  <!-- Bottom accent -->
+  <rect x="0" y="610" width="1200" height="20" fill="#14b8a6" opacity="0.3"/>
+</svg>

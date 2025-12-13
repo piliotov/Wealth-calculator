@@ -58,13 +58,3 @@ services/geminiService.ts
 
 # Fly.io
 fly.toml.local
-DEPLOYMENT.md
-SECURITY-HOSTING.md
-.gitignore
-VERCEL-INFO.md
-TAILSCALE-ACCESS.md
-.github/workflows/fly-deploy.yml
-fly.toml
-server/database.cjs
-server/server.cjs
-server/database.cjs

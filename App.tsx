@@ -7,10 +7,14 @@ import LendingTracker from './components/LendingTracker';
 import FloatingAIChat from './components/AIChat';
 import SalaryCalculator from './components/SalaryCalculator';
 import Profile from './components/Profile';
+import MonthlyBudget from './components/MonthlyBudget';
+import GoalsTracker from './components/GoalsTracker';
+import RecurringTransactions from './components/RecurringTransactions';
+import FinancialInsights from './components/FinancialInsights';
 import { ToastContainer } from './components/ToastContainer';
-import { getCurrentUser, logoutUser, getTransactions, addTransaction, getAccounts, transferMoney } from './services/api';
+import { getCurrentUser, logoutUser, getTransactions, addTransaction, getAccounts, transferMoney, fetchUserProfile } from './services/api';
 import { User, Transaction, Account, AppView } from './types';
-import { LayoutDashboard, LogOut, Receipt, Calculator, User as UserIcon } from 'lucide-react';
+import { LayoutDashboard, LogOut, Calculator, User as UserIcon, PiggyBank, Target, RefreshCw, PieChart, Menu, X } from 'lucide-react';
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -18,12 +22,29 @@ const App: React.FC = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const navItems = [
+    { view: AppView.DASHBOARD, label: 'Home', icon: LayoutDashboard },
+    { view: AppView.BUDGET, label: 'Budget', icon: PiggyBank },
+    { view: AppView.GOALS, label: 'Goals', icon: Target },
+    { view: AppView.RECURRING, label: 'Bills', icon: RefreshCw },
+    { view: AppView.INSIGHTS, label: 'Insights', icon: PieChart },
+    { view: AppView.CALCULATOR, label: 'Salary', icon: Calculator },
+  ];
+
+  const switchView = (v: AppView) => {
+    setView(v);
+    setMobileMenuOpen(false);
+  };
 
   useEffect(() => {
     const currentUser = getCurrentUser();
     if (currentUser) {
       setUser(currentUser);
       loadData(currentUser.id);
+      // Load profile details (name, avatar) once token is present
+      fetchUserProfile().then(setUser).catch(() => handleLogout());
     }
   }, []);
 
@@ -50,6 +71,10 @@ const App: React.FC = () => {
     setUser(null);
   };
 
+  const handleUserUpdated = (u: User) => {
+    setUser(u);
+  };
+
   const handleAddTransaction = async (data: any) => {
     if (!user) return;
     await addTransaction(data);
@@ -65,14 +90,14 @@ const App: React.FC = () => {
   // Nav Button Component
   const NavBtn = ({ target, icon: Icon, label }: { target: AppView, icon: any, label: string }) => (
     <button
-      onClick={() => setView(target)}
-      className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
-        view === target ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400 hover:text-white'
+      onClick={() => switchView(target)}
+      className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+        view === target ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-700'
       }`}
     >
       <div className="flex items-center gap-2">
         <Icon size={16} />
-        {label}
+        <span className="hidden lg:inline">{label}</span>
       </div>
     </button>
   );
@@ -87,63 +112,98 @@ const App: React.FC = () => {
 
   return (
     <ToastContainer>
-    <div className="min-h-screen bg-background text-slate-100 font-sans">
-      {/* Navbar */}
-      <nav className="border-b border-slate-700 bg-surface/50 backdrop-blur-md sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-3 cursor-pointer" onClick={() => setView(AppView.DASHBOARD)}>
-              <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-                <Receipt className="text-white w-5 h-5" />
-              </div>
-              <span className="font-bold text-xl tracking-tight hidden sm:block">WealthTracker AI</span>
-            </div>
+    <div className="min-h-screen bg-background text-slate-100">
+      {/* Header */}
+      <header className="bg-slate-900/80 backdrop-blur-lg border-b border-slate-800 sticky top-0 z-50">
+        <div className="max-w-6xl mx-auto px-4">
+          <div className="flex items-center justify-between h-14">
+            {/* Logo */}
+            <button onClick={() => switchView(AppView.DASHBOARD)} className="flex items-center gap-2">
+              <span className="text-xl">💰</span>
+              <span className="font-semibold text-white hidden sm:block">ProsperPilot</span>
+            </button>
             
-            <div className="flex items-center gap-6">
-              <div className="hidden md:flex gap-1 bg-slate-800 p-1 rounded-lg">
-                <NavBtn target={AppView.DASHBOARD} icon={LayoutDashboard} label="Dashboard" />
-                <NavBtn target={AppView.CALCULATOR} icon={Calculator} label="Salary" />
-              </div>
+            {/* Desktop Nav */}
+            <nav className="hidden md:flex items-center gap-1">
+              {navItems.map(item => (
+                <NavBtn key={item.view} target={item.view} icon={item.icon} label={item.label} />
+              ))}
+            </nav>
 
-              <div className="flex items-center gap-4">
-                <button 
-                  onClick={() => setView(AppView.PROFILE)}
-                  className={`flex items-center gap-2 text-sm font-medium transition-colors ${view === AppView.PROFILE ? 'text-white' : 'text-slate-400 hover:text-white'}`}
-                >
-                  <UserIcon size={18} />
-                  <span className="hidden sm:block">{user.username}</span>
-                </button>
-                <div className="h-6 w-px bg-slate-700"></div>
-                <button
-                  onClick={handleLogout}
-                  className="p-2 text-slate-400 hover:text-red-400 transition-colors"
-                  title="Sign Out"
-                >
-                  <LogOut size={20} />
-                </button>
-              </div>
+            {/* Right side */}
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={() => switchView(AppView.PROFILE)}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${view === AppView.PROFILE ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-white'}`}
+              >
+                <UserIcon size={18} />
+                <span className="hidden sm:block max-w-[100px] truncate">{user.fullName || user.username}</span>
+              </button>
+              
+              <button
+                onClick={handleLogout}
+                className="p-2 text-slate-500 hover:text-red-400 rounded-lg"
+                title="Sign out"
+              >
+                <LogOut size={18} />
+              </button>
+
+              {/* Mobile menu button */}
+              <button
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className="md:hidden p-2 text-slate-400 hover:text-white rounded-lg"
+              >
+                {mobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
+              </button>
             </div>
           </div>
         </div>
-      </nav>
+
+        {/* Mobile Nav */}
+        {mobileMenuOpen && (
+          <div className="md:hidden border-t border-slate-800 bg-slate-900">
+            <nav className="px-4 py-3 grid grid-cols-3 gap-2">
+              {navItems.map(item => (
+                <button
+                  key={item.view}
+                  onClick={() => switchView(item.view)}
+                  className={`flex flex-col items-center gap-1 py-3 px-2 rounded-xl text-xs font-medium transition-colors ${
+                    view === item.view ? 'bg-blue-600 text-white' : 'text-slate-400 bg-slate-800 active:bg-slate-700'
+                  }`}
+                >
+                  <item.icon size={20} />
+                  {item.label}
+                </button>
+              ))}
+            </nav>
+          </div>
+        )}
+      </header>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 relative">
+      <main className="max-w-6xl mx-auto px-4 py-6 pb-24">
         
         {/* VIEW: DASHBOARD */}
-        <div className={`grid grid-cols-1 lg:grid-cols-12 gap-8 ${view === AppView.DASHBOARD ? 'block' : 'hidden'}`}>
-          <div className="lg:col-span-4 space-y-6">
-               <TransactionForm accounts={accounts} onAdd={handleAddTransaction} />
-               <TransferForm accounts={accounts} onTransfer={handleTransfer} />
-               <LendingTracker accounts={accounts} onAddLoan={handleAddTransaction} />
+        <div className={`${view === AppView.DASHBOARD ? 'block' : 'hidden'}`}>
+          <div className="space-y-6 lg:grid lg:grid-cols-12 lg:gap-6 lg:space-y-0">
+            <div className="lg:col-span-4 space-y-4">
+              <TransactionForm accounts={accounts} onAdd={handleAddTransaction} />
+              <TransferForm accounts={accounts} onTransfer={handleTransfer} />
+              <LendingTracker accounts={accounts} onAddLoan={handleAddTransaction} />
+            </div>
+            <div className="lg:col-span-8">
+              <Dashboard 
+                  transactions={transactions} 
+                  accounts={accounts} 
+                  onUpdate={() => setRefreshKey(prev => prev + 1)}
+              />
+            </div>
           </div>
-          <div className="lg:col-span-8">
-            <Dashboard 
-                transactions={transactions} 
-                accounts={accounts} 
-                onUpdate={() => setRefreshKey(prev => prev + 1)}
-            />
-          </div>
+        </div>
+
+        {/* VIEW: BUDGET */}
+        <div className={view === AppView.BUDGET ? 'block' : 'hidden'}>
+            <MonthlyBudget transactions={transactions} />
         </div>
 
         {/* VIEW: CALCULATOR */}
@@ -151,9 +211,24 @@ const App: React.FC = () => {
             <SalaryCalculator accounts={accounts} onAddIncome={handleAddTransaction} />
         </div>
 
+        {/* VIEW: GOALS */}
+        <div className={view === AppView.GOALS ? 'block' : 'hidden'}>
+            <GoalsTracker userId={user.id} />
+        </div>
+
+        {/* VIEW: RECURRING */}
+        <div className={view === AppView.RECURRING ? 'block' : 'hidden'}>
+            <RecurringTransactions userId={user.id} />
+        </div>
+
+        {/* VIEW: INSIGHTS */}
+        <div className={view === AppView.INSIGHTS ? 'block' : 'hidden'}>
+            <FinancialInsights accounts={accounts} transactions={transactions} />
+        </div>
+
         {/* VIEW: PROFILE */}
         <div className={view === AppView.PROFILE ? 'block' : 'hidden'}>
-            <Profile user={user} accounts={accounts} onUpdate={() => setRefreshKey(k => k + 1)} />
+          <Profile user={user} accounts={accounts} onUpdate={() => setRefreshKey(k => k + 1)} onUserChange={handleUserUpdated} />
         </div>
 
         {/* FLOATING AI CHAT (Always rendered, fixed position) */}
@@ -161,8 +236,8 @@ const App: React.FC = () => {
 
       </main>
     </div>
-    </ToastContainer>
+  </ToastContainer>
   );
-};
+}
 
 export default App;

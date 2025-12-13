@@ -13,27 +13,33 @@ type TaxClass = 1 | 2 | 3 | 4 | 5 | 6;
 type EmploymentType = 'regular' | 'werkstudent' | 'minijob';
 
 const SalaryCalculator: React.FC<Props> = ({ accounts, onAddIncome }) => {
-  const [grossMonthly, setGrossMonthly] = useState(3000);
+  const [employmentType, setEmploymentType] = useState<EmploymentType>('werkstudent');
+  const [hours, setHours] = useState(80); // Monthly hours for Werkstudent
+  const [hourlyRate, setHourlyRate] = useState(16.50);
   const [taxClass, setTaxClass] = useState<TaxClass>(1);
-  const [employmentType, setEmploymentType] = useState<EmploymentType>('regular');
   const [hasChurchTax, setHasChurchTax] = useState(false);
   const [targetAccountId, setTargetAccountId] = useState(accounts.find(a => a.currency === 'EUR')?.id || accounts[0]?.id || '');
   const [added, setAdded] = useState(false);
   const { showToast } = useToast();
 
+  // Calculate gross based on employment type
+  const grossMonthly = employmentType === 'werkstudent' || employmentType === 'minijob' 
+    ? hours * hourlyRate 
+    : hours * hourlyRate; // Can be overridden for regular employees
+
   // Calculate yearly gross for tax brackets
   const grossYearly = grossMonthly * 12;
 
-  // 2025 German Tax Calculation
+  // 2025 German Tax Calculation - Updated with correct Grundfreibetrag
   const calculateIncomeTax = (yearlyIncome: number, taxClass: TaxClass): number => {
-    // Basic allowance (Grundfreibetrag) 2025
-    const basicAllowance = 11604;
+    // Basic allowance (Grundfreibetrag) 2025 - Updated to 12,084€
+    const basicAllowance = 12084;
     
     // Tax class specific adjustments
     const allowances = {
       1: basicAllowance,
-      2: basicAllowance + 4260, // Single parent allowance
-      3: basicAllowance * 2, // Married, higher earner
+      2: basicAllowance + 4260, // Single parent allowance (Entlastungsbetrag)
+      3: basicAllowance * 2, // Married, higher earner (24,168€)
       4: basicAllowance, // Married, equal earners
       5: 0, // Married, lower earner (partner has class 3)
       6: 0 // Second job, no allowances
@@ -43,12 +49,12 @@ const SalaryCalculator: React.FC<Props> = ({ accounts, onAddIncome }) => {
     
     if (taxableIncome === 0) return 0;
 
-    // Progressive tax rates (Einkommensteuer 2025)
+    // Progressive tax rates (Einkommensteuer 2025) - Standard German formula
     let tax = 0;
     
     if (taxableIncome <= 17005) {
       // Zone 1: 14% - 23.97% (linear progression)
-      const y = (taxableIncome - 11604) / 10000;
+      const y = (taxableIncome - basicAllowance) / 10000;
       tax = (922.98 * y + 1400) * y;
     } else if (taxableIncome <= 66760) {
       // Zone 2: 23.97% - 42% (linear progression)
@@ -77,8 +83,9 @@ const SalaryCalculator: React.FC<Props> = ({ accounts, onAddIncome }) => {
   };
 
   // Social security contributions (Sozialversicherung) 2025
+  // Updated rates from brutto-netto-rechner.info
   // Werkstudent (student worker): Only pays pension insurance (9.3%) if earning > 520€/month
-  // Minijob (450€/520€ job): No employee contributions
+  // Minijob (≤520€/month): No employee contributions
   // Regular employee: All contributions
   
   let healthInsurance = 0;
@@ -88,18 +95,19 @@ const SalaryCalculator: React.FC<Props> = ({ accounts, onAddIncome }) => {
   let nursingInsurance = 0;
 
   if (employmentType === 'regular') {
+    // 2025 rates: KV 7.3%, RV 9.3%, AV 1.3%, PV 1.7-2.3% (average 1.7% for 1 child)
     healthInsurance = grossMonthly * 0.073; // 7.3% employee share
-    healthInsuranceExtra = grossMonthly * 0.01; // ~1% average Zusatzbeitrag
-    pensionInsurance = grossMonthly * 0.093; // 9.3% employee share
-    unemploymentInsurance = grossMonthly * 0.013; // 1.3% employee share
-    nursingInsurance = grossMonthly * 0.01775; // 1.775% (higher for childless 30+)
+    healthInsuranceExtra = grossMonthly * 0.025; // 2.5% average Zusatzbeitrag (updated from website)
+    pensionInsurance = grossMonthly * 0.093; // 9.3% employee share (18.6% total / 2)
+    unemploymentInsurance = grossMonthly * 0.013; // 1.3% employee share (2.6% total / 2)
+    nursingInsurance = grossMonthly * 0.017; // 1.7% base rate (for 1 child, no childless surcharge)
   } else if (employmentType === 'werkstudent') {
-    // Werkstudent only pays pension insurance (9.3%) if above 520€
+    // Werkstudent only pays pension insurance (9.3%) if above 520€ (Minijob threshold)
     pensionInsurance = grossMonthly > 520 ? grossMonthly * 0.093 : 0;
-    // No health, unemployment, or nursing insurance
+    // No health, unemployment, or nursing insurance for students under 20h/week
   } else if (employmentType === 'minijob') {
-    // Minijob: No employee contributions (employer pays flat-rate contributions)
-    // Employee can voluntarily opt into pension, but we assume they don't
+    // Minijob (≤520€): No employee contributions at all
+    // Employer pays flat-rate contributions, but employee pays nothing
   }
 
   const totalSocialSecurity = healthInsurance + healthInsuranceExtra + pensionInsurance + 
@@ -144,33 +152,57 @@ const SalaryCalculator: React.FC<Props> = ({ accounts, onAddIncome }) => {
         </div>
         <div>
           <h2 className="text-2xl font-bold text-white">German Salary Calculator</h2>
-          <p className="text-slate-400 text-sm">Complete Tax & Social Security Calculation (2025)</p>
+          <p className="text-slate-400 text-sm">2025 Tax & Social Security (based on brutto-netto-rechner.info)</p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+        <div className="md:col-span-3">
           <label className="block text-sm text-slate-400 mb-2">Employment Type</label>
           <select
             value={employmentType}
             onChange={(e) => setEmploymentType(e.target.value as EmploymentType)}
             className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white focus:border-emerald-500 focus:outline-none"
           >
-            <option value="regular">Regular Employee</option>
-            <option value="werkstudent">Werkstudent (Student)</option>
+            <option value="werkstudent">Werkstudent (Student Worker)</option>
+            <option value="regular">Regular Employee (Vollzeit/Teilzeit)</option>
             <option value="minijob">Minijob (≤520€)</option>
           </select>
         </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
         <div>
-          <label className="block text-sm text-slate-400 mb-2">Monthly Gross Salary (€)</label>
+          <label className="block text-sm text-slate-400 mb-2">Monthly Hours</label>
           <input
             type="number"
-            step="100"
-            value={grossMonthly}
-            onChange={(e) => setGrossMonthly(Number(e.target.value))}
+            step="1"
+            value={hours}
+            onChange={(e) => setHours(Number(e.target.value))}
             className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white focus:border-emerald-500 focus:outline-none"
           />
         </div>
+        <div>
+          <label className="block text-sm text-slate-400 mb-2">Hourly Rate (€)</label>
+          <input
+            type="number"
+            step="0.50"
+            value={hourlyRate}
+            onChange={(e) => setHourlyRate(Number(e.target.value))}
+            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white focus:border-emerald-500 focus:outline-none"
+          />
+        </div>
+      </div>
+
+      <div className="bg-slate-800/50 rounded-lg p-4 mb-6">
+        <div className="flex justify-between items-center text-white">
+          <span className="font-semibold">Calculated Gross Monthly:</span>
+          <span className="text-2xl font-bold text-emerald-400">€{grossMonthly.toFixed(2)}</span>
+        </div>
+        <p className="text-xs text-slate-400 mt-1">{hours} hours × €{hourlyRate.toFixed(2)}/hour</p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
         <div>
           <label className="block text-sm text-slate-400 mb-2">Tax Class (Steuerklasse)</label>
           <select
@@ -186,18 +218,17 @@ const SalaryCalculator: React.FC<Props> = ({ accounts, onAddIncome }) => {
             <option value={6}>Class 6 - Second job</option>
           </select>
         </div>
-      </div>
-
-      <div className="mb-6">
-        <label className="flex items-center gap-2 text-slate-300 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={hasChurchTax}
-            onChange={(e) => setHasChurchTax(e.target.checked)}
-            className="w-4 h-4 bg-slate-900 border-slate-700 rounded"
-          />
-          <span className="text-sm">Subject to Church Tax (Kirchensteuer - 9%)</span>
-        </label>
+        <div className="flex items-end">
+          <label className="flex items-center gap-2 text-slate-300 cursor-pointer pb-3">
+            <input
+              type="checkbox"
+              checked={hasChurchTax}
+              onChange={(e) => setHasChurchTax(e.target.checked)}
+              className="w-4 h-4 bg-slate-900 border-slate-700 rounded"
+            />
+            <span className="text-sm">Church Tax (Kirchensteuer - 9%)</span>
+          </label>
+        </div>
       </div>
 
       <div className="bg-slate-900 rounded-xl p-6 border border-slate-800 space-y-3 mb-8">
@@ -208,13 +239,13 @@ const SalaryCalculator: React.FC<Props> = ({ accounts, onAddIncome }) => {
         
         <div className="border-t border-slate-700 pt-3 space-y-2">
           <p className="text-xs text-slate-500 uppercase tracking-wide font-bold mb-2">
-            Social Security (Sozialversicherung)
-            {employmentType === 'werkstudent' && <span className="ml-2 text-amber-400">⚠ Reduced for students</span>}
-            {employmentType === 'minijob' && <span className="ml-2 text-emerald-400">✓ Tax-free</span>}
+            Social Security (Sozialversicherung) - 2025 Rates
+            {employmentType === 'werkstudent' && <span className="ml-2 text-amber-400">⚠ Student: Reduced</span>}
+            {employmentType === 'minijob' && <span className="ml-2 text-emerald-400">✓ Minijob: Tax-free</span>}
           </p>
           {healthInsurance + healthInsuranceExtra > 0 && (
             <div className="flex justify-between text-red-400 text-sm">
-              <span>Health Insurance (7.3% + ~1%)</span>
+              <span>Health Insurance (7.3% + 2.5% extra)</span>
               <span>-€{(healthInsurance + healthInsuranceExtra).toFixed(2)}</span>
             </div>
           )}
@@ -232,12 +263,12 @@ const SalaryCalculator: React.FC<Props> = ({ accounts, onAddIncome }) => {
           )}
           {nursingInsurance > 0 && (
             <div className="flex justify-between text-red-400 text-sm">
-              <span>Nursing Care Insurance (1.775%)</span>
+              <span>Nursing Care Insurance (1.7%)</span>
               <span>-€{nursingInsurance.toFixed(2)}</span>
             </div>
           )}
           {totalSocialSecurity === 0 && (
-            <div className="text-emerald-400 text-sm italic">No social security contributions</div>
+            <div className="text-emerald-400 text-sm italic">No social security contributions required</div>
           )}
         </div>
 

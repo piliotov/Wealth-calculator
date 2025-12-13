@@ -18,6 +18,14 @@ const Dashboard: React.FC<Props> = ({ transactions, accounts, onUpdate }) => {
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<{ isOpen: boolean; txId?: number; loan?: Transaction } | null>(null);
   const { showToast } = useToast();
+
+  const isTransferCategory = (category: string) => category.toLowerCase().includes('transfer');
+  const isLoanCategory = (category: string) => category.toLowerCase().includes('loan');
+
+  const expenseTransactions = useMemo(
+    () => transactions.filter(t => t.type === 'expense' && !isTransferCategory(t.category) && !isLoanCategory(t.category)),
+    [transactions]
+  );
   
   const stats = useMemo(() => {
     // 1. Calculate Net Worth in EUR
@@ -33,14 +41,14 @@ const Dashboard: React.FC<Props> = ({ transactions, accounts, onUpdate }) => {
       return acc + (t.amount * rate);
     }, 0);
     
-    const expenses = transactions.filter(t => t.type === 'expense').reduce((acc, t) => {
+    const expenses = expenseTransactions.reduce((acc, t) => {
       const rate = t.currency === 'BGN' ? (1/EXCHANGE_RATES.BGN) : t.currency === 'USD' ? (1/EXCHANGE_RATES.USD) : 1;
       return acc + (t.amount * rate);
     }, 0);
 
     // 3. Category Breakdown (Expenses) - Exclude transfers
     const categories: Record<string, number> = {};
-    transactions.filter(t => t.type === 'expense' && t.category !== 'Transfer Out').forEach(t => {
+    expenseTransactions.forEach(t => {
       const rate = t.currency === 'BGN' ? (1/EXCHANGE_RATES.BGN) : t.currency === 'USD' ? (1/EXCHANGE_RATES.USD) : 1;
       categories[t.category] = (categories[t.category] || 0) + (t.amount * rate);
     });
@@ -49,7 +57,7 @@ const Dashboard: React.FC<Props> = ({ transactions, accounts, onUpdate }) => {
 
     // 3b. Income Categories - Exclude transfers
     const incomeCategories: Record<string, number> = {};
-    transactions.filter(t => t.type === 'income' && t.category !== 'Transfer In').forEach(t => {
+    transactions.filter(t => t.type === 'income' && !isTransferCategory(t.category) && !isLoanCategory(t.category)).forEach(t => {
       const rate = t.currency === 'BGN' ? (1/EXCHANGE_RATES.BGN) : t.currency === 'USD' ? (1/EXCHANGE_RATES.USD) : 1;
       incomeCategories[t.category] = (incomeCategories[t.category] || 0) + (t.amount * rate);
     });
@@ -138,75 +146,77 @@ const Dashboard: React.FC<Props> = ({ transactions, accounts, onUpdate }) => {
   };
 
   return (
-    <div className="space-y-6 pb-20">
+    <div className="space-y-4 pb-24">
       
-      {/* Account Breakdown Cards */}
-      <h3 className="text-lg font-semibold text-white">Accounts</h3>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {accounts.map(acc => (
-          <div key={acc.id} className="bg-surface p-4 rounded-xl border border-slate-700 shadow-sm flex items-center justify-between">
-            <div>
-              <p className="text-slate-400 text-xs uppercase tracking-wider font-bold">{acc.name}</p>
-              <p className="text-xs text-slate-500">{acc.type}</p>
-              <h2 className="text-xl font-bold text-white mt-1">
-                {new Intl.NumberFormat('en-US', { style: 'currency', currency: acc.currency }).format(acc.balance)}
-              </h2>
-            </div>
-            <div className="p-3 bg-slate-800 rounded-full">
-              <Building2 className="text-primary w-6 h-6" />
-            </div>
+      {/* Net Worth Summary - Clean card */}
+      <div className="bg-slate-800/50 p-5 rounded-xl border border-slate-700/50">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-slate-400 text-sm">Total Balance</p>
+            <h2 className="text-3xl font-bold text-white mt-1">
+              {formatEUR(stats.netWorthEUR)}
+            </h2>
+            <p className="text-xs text-slate-500 mt-1">Combined across all accounts</p>
           </div>
-        ))}
-        {/* Total Net Worth Card */}
-         <div className="bg-gradient-to-br from-indigo-900 to-slate-900 p-4 rounded-xl border border-indigo-500/30 shadow-sm flex items-center justify-between">
-            <div>
-              <p className="text-indigo-300 text-xs uppercase tracking-wider font-bold">Total Net Worth</p>
-              <p className="text-xs text-indigo-400/70">Estimated in EUR</p>
-              <h2 className="text-2xl font-bold text-white mt-1">
-                {formatEUR(stats.netWorthEUR)}
-              </h2>
-            </div>
-            <div className="p-3 bg-indigo-500/20 rounded-full">
-              <Wallet className="text-indigo-400 w-6 h-6" />
-            </div>
+          <div className="p-3 bg-teal-600/20 rounded-xl">
+            <Wallet className="text-teal-500 w-7 h-7" />
           </div>
+        </div>
       </div>
 
-      {/* Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-8">
+      {/* Account Cards - Horizontal scroll on mobile */}
+      <div className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4 md:mx-0 md:px-0 md:grid md:grid-cols-2 lg:grid-cols-3">
+        {accounts.map(acc => (
+          <div key={acc.id} className="bg-slate-800/40 p-4 rounded-xl border border-slate-700/50 flex-shrink-0 w-[200px] md:w-auto">
+            <div className="flex items-center gap-2 mb-2">
+              <Building2 className="text-slate-500 w-4 h-4" />
+              <p className="text-slate-400 text-sm font-medium truncate">{acc.name}</p>
+            </div>
+            <h3 className="text-xl font-semibold text-white">
+              {new Intl.NumberFormat('en-US', { style: 'currency', currency: acc.currency }).format(acc.balance)}
+            </h3>
+            <p className="text-xs text-slate-500 mt-1">{acc.type}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Charts - Stack on mobile */}
+      <div className="space-y-4 mt-4">
         
         {/* Net Worth Chart */}
-        <div className="bg-surface p-6 rounded-xl border border-slate-700 shadow-sm lg:col-span-3">
-          <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-            <TrendingUp className="w-4 h-4 text-primary" />
-            Net Worth Trend (EUR)
+        <div className="bg-slate-800/40 p-4 rounded-xl border border-slate-700/50">
+          <h3 className="text-sm font-medium text-slate-300 mb-3 flex items-center gap-2">
+            <TrendingUp className="w-4 h-4 text-teal-500" />
+            Balance History
           </h3>
-          <div className="h-64 w-full">
+          <div style={{ width: '100%', height: 200 }}>
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={stats.chartData}>
                 <defs>
                   <linearGradient id="colorBalance" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                    <stop offset="5%" stopColor="#14b8a6" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="#14b8a6" stopOpacity={0}/>
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                <XAxis dataKey="date" stroke="#94a3b8" fontSize={12} tickLine={false} />
-                <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} tickFormatter={(val) => `€${val/1000}k`} />
+                <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+                <XAxis dataKey="date" stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} />
+                <YAxis stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(val) => `€${val/1000}k`} width={50} />
                 <Tooltip 
-                  contentStyle={{ backgroundColor: '#1e293b', borderColor: '#475569', color: '#fff' }}
+                  contentStyle={{ backgroundColor: '#1e293b', borderColor: '#475569', color: '#fff', borderRadius: '8px', fontSize: '12px' }}
                   formatter={(value: number) => formatEUR(value)}
                 />
-                <Area type="monotone" dataKey="balance" stroke="#3b82f6" fillOpacity={1} fill="url(#colorBalance)" />
+                <Area type="monotone" dataKey="balance" stroke="#14b8a6" strokeWidth={2} fillOpacity={1} fill="url(#colorBalance)" />
               </AreaChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        {/* Income Distribution */}
-        <div className="bg-surface p-6 rounded-xl border border-slate-700 shadow-sm">
-          <h3 className="text-lg font-semibold text-white mb-4">Income Distribution</h3>
-          <div className="h-64 w-full flex items-center justify-center">
+        {/* Pie Charts - Side by side on desktop, stacked on mobile */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Income */}
+        <div className="bg-slate-800/40 p-4 rounded-xl border border-slate-700/50">
+          <h3 className="text-sm font-medium text-slate-300 mb-2">Income Sources</h3>
+          <div style={{ width: '100%', height: 160 }} className="flex items-center justify-center">
             {stats.incomePieData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
@@ -214,10 +224,10 @@ const Dashboard: React.FC<Props> = ({ transactions, accounts, onUpdate }) => {
                     data={stats.incomePieData}
                     cx="50%"
                     cy="50%"
-                    innerRadius={60}
-                    outerRadius={80}
+                    innerRadius={45}
+                    outerRadius={65}
                     fill="#8884d8"
-                    paddingAngle={5}
+                    paddingAngle={3}
                     dataKey="value"
                     label={false}
                   >
@@ -226,7 +236,7 @@ const Dashboard: React.FC<Props> = ({ transactions, accounts, onUpdate }) => {
                     ))}
                   </Pie>
                   <Tooltip 
-                     contentStyle={{ backgroundColor: '#1e293b', borderColor: '#475569', color: '#fff' }}
+                     contentStyle={{ backgroundColor: '#1e293b', borderColor: '#475569', color: '#fff', borderRadius: '8px', fontSize: '12px' }}
                      formatter={(value: number) => formatEUR(value)}
                   />
                 </PieChart>
@@ -246,10 +256,10 @@ const Dashboard: React.FC<Props> = ({ transactions, accounts, onUpdate }) => {
           </div>
         </div>
 
-        {/* Expense Categories */}
-        <div className="bg-surface p-6 rounded-xl border border-slate-700 shadow-sm lg:col-span-2">
-          <h3 className="text-lg font-semibold text-white mb-4">Expense Distribution</h3>
-          <div className="h-64 w-full flex items-center justify-center">
+        {/* Expenses */}
+        <div className="bg-slate-800/40 p-4 rounded-xl border border-slate-700/50">
+          <h3 className="text-sm font-medium text-slate-300 mb-2">Expense Breakdown</h3>
+          <div style={{ width: '100%', height: 160 }} className="flex items-center justify-center">
             {stats.pieData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
@@ -257,76 +267,78 @@ const Dashboard: React.FC<Props> = ({ transactions, accounts, onUpdate }) => {
                     data={stats.pieData}
                     cx="50%"
                     cy="50%"
-                    innerRadius={60}
-                    outerRadius={80}
+                    innerRadius={45}
+                    outerRadius={65}
                     fill="#8884d8"
-                    paddingAngle={5}
+                    paddingAngle={3}
                     dataKey="value"
-                    label={false} // HIDDEN to prevent unreadable black text
+                    label={false}
                   >
                     {stats.pieData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
                   </Pie>
                   <Tooltip 
-                     contentStyle={{ backgroundColor: '#1e293b', borderColor: '#475569', color: '#fff' }}
+                     contentStyle={{ backgroundColor: '#1e293b', borderColor: '#475569', color: '#fff', borderRadius: '8px', fontSize: '12px' }}
                      formatter={(value: number) => formatEUR(value)}
                   />
                 </PieChart>
               </ResponsiveContainer>
             ) : (
-              <p className="text-slate-500">No expenses recorded yet.</p>
+              <p className="text-slate-500 text-sm">No expenses yet</p>
             )}
           </div>
           {/* Legend */}
-          <div className="flex flex-wrap gap-3 mt-4 justify-center">
+          <div className="flex flex-wrap gap-2 mt-3 justify-center">
             {stats.pieData.map((entry, index) => (
-              <div key={entry.name} className="flex items-center gap-1 text-xs text-slate-300">
+              <div key={entry.name} className="flex items-center gap-1 text-xs text-slate-400">
                 <div className="w-2 h-2 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }}></div>
-                {entry.name}
+                <span className="truncate max-w-[80px]">{entry.name}</span>
               </div>
             ))}
           </div>
         </div>
+        </div>
       </div>
 
-      {/* Transaction List with Edit Capability */}
-      <div className="bg-surface rounded-xl border border-slate-700 overflow-hidden">
-        <div className="p-4 border-b border-slate-700 bg-slate-900/50">
-            <h3 className="font-semibold text-sm text-slate-300">Detailed Activity</h3>
+      {/* Recent Transactions */}
+      <div className="bg-slate-800/40 rounded-xl border border-slate-700/50 overflow-hidden">
+        <div className="p-4 border-b border-slate-700/50">
+            <h3 className="text-sm font-medium text-slate-300">Recent Activity</h3>
         </div>
-        <div className="max-h-[500px] overflow-y-auto">
-            {transactions.map(t => {
+        <div className="max-h-[400px] overflow-y-auto">
+            {expenseTransactions.map(t => {
               const isLoan = t.category === 'Loan Given' || t.category === 'Loan Received';
               return (
-            <div key={t.id} className="p-4 border-b border-slate-700/50 last:border-0 hover:bg-slate-700/30 transition-colors group">
-                <div className="flex justify-between items-center">
-                <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="text-white text-sm font-medium">{t.category}</p>
+            <div key={t.id} className="p-3 md:p-4 border-b border-slate-700/30 last:border-0 active:bg-slate-700/30 md:hover:bg-slate-700/20 transition-colors group">
+                <div className="flex justify-between items-start gap-3">
+                <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-white text-sm font-medium truncate">{t.category}</p>
                       {isLoan && (
-                        <span className="text-xs bg-orange-500/20 text-orange-400 px-2 py-0.5 rounded-full border border-orange-500/30">
-                          {t.category === 'Loan Given' ? '💸 Lent' : '💰 Borrowed'}
+                        <span className="text-xs bg-orange-500/15 text-orange-400 px-2 py-0.5 rounded-md border border-orange-500/20 shrink-0">
+                          {t.category === 'Loan Given' ? 'Lent' : 'Borrowed'}
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-slate-500">{t.description || 'No description'}</p>
-                    <div className="flex items-center gap-2 mt-1">
-                    <span className="text-xs text-slate-400 bg-slate-800 px-1.5 rounded">
+                    {t.description && <p className="text-xs text-slate-500 mt-0.5 truncate">{t.description}</p>}
+                    <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                    <span className="text-xs text-slate-400 bg-slate-700/50 px-2 py-0.5 rounded">
                         {accounts.find(a => a.id === t.accountId)?.name || 'Unknown'}
                     </span>
-                    <span className="text-xs text-slate-600">{new Date(t.date).toLocaleDateString()}</span>
+                    <span className="text-xs text-slate-500">{new Date(t.date).toLocaleDateString()}</span>
                     </div>
                 </div>
-                <div className="flex items-center gap-2">
-                    <span className={`text-sm font-bold text-right min-w-[110px] ${t.type === 'income' ? 'text-emerald-400' : 'text-red-400'}`}>
+                <div className="flex items-start gap-2 shrink-0">
+                    <span className={`text-sm font-semibold text-right whitespace-nowrap ${t.type === 'income' ? 'text-teal-400' : 'text-red-400'}`}>
                         {t.type === 'income' ? '+' : '-'}{t.amount.toFixed(2)} {t.currency}
                     </span>
-                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity min-w-[140px] justify-end">
+                    {/* Desktop actions */}
+                    <div className="hidden md:flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       {isLoan && (
                         <button 
                           onClick={() => handleRepayLoan(t)}
-                          className="p-2 text-slate-400 hover:text-emerald-400 bg-slate-800 rounded-full"
+                          className="p-1.5 text-slate-400 hover:text-teal-400 bg-slate-800/80 rounded-lg"
                           title="Mark as Repaid"
                         >
                           <Check className="w-4 h-4" />
@@ -334,19 +346,20 @@ const Dashboard: React.FC<Props> = ({ transactions, accounts, onUpdate }) => {
                       )}
                       <button 
                           onClick={() => setEditingTx(t)}
-                          className="p-2 text-slate-400 hover:text-white bg-slate-800 rounded-full"
+                          className="p-1.5 text-slate-400 hover:text-white bg-slate-800/80 rounded-lg"
                           title="Edit"
                       >
                           <Pencil className="w-4 h-4" />
                       </button>
                       <button 
                           onClick={() => handleDelete(t.id)}
-                          className="p-2 text-slate-400 hover:text-red-400 bg-slate-800 rounded-full"
+                          className="p-1.5 text-slate-400 hover:text-red-400 bg-slate-800/80 rounded-lg"
                           title="Delete"
                       >
                           <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
+                    {/* Mobile menu trigger - could be added later */}
                 </div>
                 </div>
             </div>
@@ -356,45 +369,44 @@ const Dashboard: React.FC<Props> = ({ transactions, accounts, onUpdate }) => {
 
       {/* Edit Transaction Modal */}
       {editingTx && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-            <div className="bg-surface border border-slate-700 p-6 rounded-xl w-full max-w-md shadow-2xl">
-                <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-lg font-bold text-white">Edit Transaction</h3>
-                    <button onClick={() => setEditingTx(null)} className="text-slate-400 hover:text-white">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end md:items-center justify-center z-50 p-4">
+            <div className="bg-slate-900 border border-slate-700/50 rounded-t-2xl md:rounded-xl w-full max-w-md shadow-2xl">
+                <div className="flex justify-between items-center p-4 border-b border-slate-700/50">
+                    <h3 className="text-base font-semibold text-white">Edit Transaction</h3>
+                    <button onClick={() => setEditingTx(null)} className="text-slate-400 hover:text-white p-2 -mr-2">
                         <X className="w-5 h-5" />
                     </button>
                 </div>
-                <form onSubmit={handleEditSave} className="space-y-4">
+                <form onSubmit={handleEditSave} className="p-4 space-y-3">
                     <div>
-                        <label className="block text-xs text-slate-400 mb-1">Amount ({editingTx.currency})</label>
+                        <label className="block text-xs text-slate-400 mb-1.5">Amount ({editingTx.currency})</label>
                         <input 
                             type="number" step="0.01" 
                             value={editingTx.amount}
                             onChange={(e) => setEditingTx({...editingTx, amount: parseFloat(e.target.value)})}
-                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white"
+                            className="w-full h-12 bg-slate-800/50 border border-slate-700 rounded-lg px-3 text-white text-base"
                         />
-                        <p className="text-xs text-slate-500 mt-1">Modifying amount updates account balance.</p>
                     </div>
                     <div>
-                        <label className="block text-xs text-slate-400 mb-1">Description</label>
+                        <label className="block text-xs text-slate-400 mb-1.5">Description</label>
                         <input 
                             type="text" 
                             value={editingTx.description}
                             onChange={(e) => setEditingTx({...editingTx, description: e.target.value})}
-                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white"
+                            className="w-full h-12 bg-slate-800/50 border border-slate-700 rounded-lg px-3 text-white text-base"
                         />
                     </div>
                     <div>
-                        <label className="block text-xs text-slate-400 mb-1">Category</label>
+                        <label className="block text-xs text-slate-400 mb-1.5">Category</label>
                         <input 
                             type="text" 
                             value={editingTx.category}
                             onChange={(e) => setEditingTx({...editingTx, category: e.target.value})}
-                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white"
+                            className="w-full h-12 bg-slate-800/50 border border-slate-700 rounded-lg px-3 text-white text-base"
                         />
                     </div>
                     
-                    <button type="submit" className="w-full bg-primary hover:bg-blue-600 text-white py-2 rounded-lg flex justify-center items-center gap-2">
+                    <button type="submit" className="w-full h-12 bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white rounded-lg flex justify-center items-center gap-2 font-medium mt-6">
                         <Save className="w-4 h-4" />
                         Save Changes
                     </button>

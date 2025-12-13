@@ -2,76 +2,66 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>WealthTracker AI</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-      tailwind.config = {
-        darkMode: 'class',
-        theme: {
-          extend: {
-            colors: {
-              background: '#0f172a', // slate-900
-              surface: '#1e293b', // slate-800
-              primary: '#3b82f6', // blue-500
-              success: '#10b981', // emerald-500
-              danger: '#ef4444', // red-500
-            }
-          }
-        }
-      }
-    </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="description" content="Smart personal finance tracker with AI insights. Track expenses, set goals, manage budgets, and grow your wealth with intelligent analytics." />
+    <meta name="theme-color" content="#0f172a" />
+    
+    <!-- iOS PWA Meta Tags -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="ProsperPilot" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="format-detection" content="telephone=no" />
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://budgetracker.fly.dev/" />
+    <meta property="og:title" content="ProsperPilot - Smart Finance Tracker" />
+    <meta property="og:description" content="Track expenses, set goals, and manage your money smarter with AI-powered insights. Multiple currencies, budget tracking, and financial analytics." />
+    <meta property="og:image" content="https://budgetracker.fly.dev/og-image.svg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:type" content="image/svg+xml" />
+    
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:url" content="https://budgetracker.fly.dev/" />
+    <meta name="twitter:title" content="ProsperPilot - Smart Finance Tracker" />
+    <meta name="twitter:description" content="Track expenses, set goals, and manage your money smarter with AI-powered insights." />
+    <meta name="twitter:image" content="https://budgetracker.fly.dev/og-image.svg" />
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="apple-touch-icon" href="/icon-192.svg" />
+    <link rel="apple-touch-icon" sizes="152x152" href="/icon-192.svg" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/icon-192.svg" />
+    <link rel="apple-touch-icon" sizes="167x167" href="/icon-192.svg" />
+    
+    <!-- iOS Splash Screens -->
+    <link rel="apple-touch-startup-image" href="/icon-512.svg" />
+    
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💰</text></svg>" />
+    <title>ProsperPilot - Smart Finance Tracker</title>
     <style>
+      * { -webkit-tap-highlight-color: transparent; }
       body {
         background-color: #0f172a;
-        color: #f8fafc;
+        color: #e2e8f0;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        -webkit-font-smoothing: antialiased;
       }
-      /* Custom scrollbar for webkit */
-      ::-webkit-scrollbar {
-        width: 8px;
-      }
-      ::-webkit-scrollbar-track {
-        background: #1e293b; 
-      }
-      ::-webkit-scrollbar-thumb {
-        background: #475569; 
-        border-radius: 4px;
-      }
-      ::-webkit-scrollbar-thumb:hover {
-        background: #64748b; 
-      }
-      @keyframes slide-in {
-        from {
-          transform: translateX(100%);
-          opacity: 0;
-        }
-        to {
-          transform: translateX(0);
-          opacity: 1;
-        }
-      }
-      @keyframes fade-in {
-        from { opacity: 0; }
-        to { opacity: 1; }
-      }
-      @keyframes scale-in {
-        from {
-          transform: scale(0.9);
-          opacity: 0;
-        }
-        to {
-          transform: scale(1);
-          opacity: 1;
-        }
-      }
-      .animate-slide-in {
-        animation: slide-in 0.3s ease-out;
-      }
-      .animate-fade-in {
-        animation: fade-in 0.2s ease-out;
-      }
-      .animate-scale-in {
-        animation: scale-in 0.2s ease-out;
+      input, select, textarea, button { font-size: 16px !important; }
+      ::-webkit-scrollbar { width: 6px; height: 6px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+      @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+      @keyframes slideUp { from { transform: translateY(10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+      .fade-in { animation: fadeIn 0.2s ease-out; }
+      .slide-up { animation: slideUp 0.25s ease-out; }
+      
+      /* Better touch targets */
+      @media (max-width: 640px) {
+        button, a, input, select { min-height: 44px; }
       }
     </style>
   </head>

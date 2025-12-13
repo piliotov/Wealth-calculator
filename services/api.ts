@@ -1,6 +1,6 @@
 import { Transaction, User, Account } from '../types';
 
-const API_URL = 'http://localhost:3001/api';
+const API_URL = '/api';
 
 let authToken: string | null = null;
 
@@ -19,8 +19,12 @@ export const registerUser = async (username: string, password: string): Promise<
   });
 
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || 'Registration failed');
+    try {
+      const error = await response.json();
+      throw new Error(error.error || 'Registration failed');
+    } catch (e) {
+      throw new Error(`Registration failed: ${response.status} ${response.statusText}`);
+    }
   }
 
   const data = await response.json();
@@ -37,8 +41,12 @@ export const loginUser = async (username: string, password: string): Promise<{ t
   });
 
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || 'Login failed');
+    try {
+      const error = await response.json();
+      throw new Error(error.error || 'Login failed');
+    } catch (e) {
+      throw new Error(`Login failed: ${response.status} ${response.statusText}`);
+    }
   }
 
   const data = await response.json();
@@ -61,10 +69,39 @@ export const getCurrentUser = (): User | null => {
   // Decode JWT to get user info (simple decode, not verification)
   try {
     const payload = JSON.parse(atob(token.split('.')[1]));
-    return { id: payload.id, username: payload.username, passwordHash: '' };
+    return { id: payload.id, username: payload.username };
   } catch {
     return null;
   }
+};
+
+// --- User Profile ---
+
+export const fetchUserProfile = async (): Promise<User> => {
+  const response = await fetch(`${API_URL}/me`, {
+    headers: getHeaders()
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to load profile');
+  }
+
+  return response.json();
+};
+
+export const updateUserProfile = async (data: { fullName?: string | null; avatarUrl?: string | null; }): Promise<User> => {
+  const response = await fetch(`${API_URL}/me`, {
+    method: 'PUT',
+    headers: getHeaders(),
+    body: JSON.stringify(data)
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Failed to update profile' }));
+    throw new Error(error.error || 'Failed to update profile');
+  }
+
+  return response.json();
 };
 
 // --- Account Services ---
@@ -85,7 +122,10 @@ export const createAccount = async (name: string, currency: 'EUR'|'BGN'|'USD', b
     body: JSON.stringify({ name, currency, balance })
   });
 
-  if (!response.ok) throw new Error('Failed to create account');
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Failed to create account' }));
+    throw new Error(error.error || 'Failed to create account');
+  }
   return response.json();
 };
 
@@ -181,13 +221,24 @@ export const sendChatMessage = async (message: string): Promise<string> => {
     body: JSON.stringify({ message })
   });
 
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || 'AI chat failed');
+  // Read body once and parse safely
+  const raw = await response.text();
+  let parsed: any = null;
+  try {
+    parsed = raw ? JSON.parse(raw) : null;
+  } catch {
+    // Non-JSON response (e.g., HTML error); keep raw text for debugging
   }
 
-  const data = await response.json();
-  return data.response;
+  if (!response.ok) {
+    const msg = parsed?.error || parsed?.message || raw || 'AI chat failed';
+    throw new Error(msg);
+  }
+
+  const answer = parsed?.response;
+  if (typeof answer === 'string') return answer;
+  // Fallback if model responds with unexpected shape
+  return parsed?.candidates?.[0]?.content?.parts?.[0]?.text || 'No response from AI';
 };
 
 // --- Transfers ---

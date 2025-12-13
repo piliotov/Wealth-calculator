@@ -24,7 +24,9 @@ export interface Transaction {
 export interface User {
   id: string;
   username: string;
-  passwordHash: string;
+  passwordHash?: string;
+  fullName?: string | null;
+  avatarUrl?: string | null;
 }
 
 export interface ChatMessage {
@@ -44,5 +46,9 @@ export enum AppView {
   DASHBOARD = 'DASHBOARD',
   TRANSACTIONS = 'TRANSACTIONS', // Kept for type safety, though merged into Dashboard in UI
   CALCULATOR = 'CALCULATOR',
-  PROFILE = 'PROFILE'
+  BUDGET = 'BUDGET',
+  PROFILE = 'PROFILE',
+  GOALS = 'GOALS',
+  RECURRING = 'RECURRING',
+  INSIGHTS = 'INSIGHTS'
 }

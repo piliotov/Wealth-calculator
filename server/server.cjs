@@ -2,15 +2,66 @@ const express = require('express');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const db = require('./database.cjs');
 require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret';
+const NODE_ENV = process.env.NODE_ENV || 'development';
 
-app.use(cors());
-app.use(express.json());
+// Trust proxy - required when behind Fly.io proxy
+app.set('trust proxy', 1);
+
+// Security: Helmet - Sets secure HTTP headers
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://cdn.tailwindcss.com"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://cdn.tailwindcss.com"],
+      imgSrc: ["'self'", "data:", "https:", "http:"],
+      connectSrc: ["'self'", "https://generativelanguage.googleapis.com"],
+      fontSrc: ["'self'", "data:"],
+      objectSrc: ["'none'"],
+      mediaSrc: ["'self'"],
+      frameSrc: ["'none'"],
+    },
+  },
+}));
+
+// Parse JSON bodies BEFORE other middleware
+app.use(express.json({ limit: '10mb' })); // Limit payload size
+
+// Security: CORS - Restrict origins in production
+const corsOptions = {
+  origin: NODE_ENV === 'production' 
+    ? (process.env.FRONTEND_URL || true) // Allow same origin in production
+    : ['http://localhost:3000', 'http://127.0.0.1:3000'],
+  credentials: true,
+  optionsSuccessStatus: 200
+};
+app.use(cors(corsOptions));
+
+// Security: Rate limiting - Prevent brute force attacks
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 200, // Limit each IP to 200 requests per windowMs
+  message: 'Too many requests from this IP, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20, // Limit login attempts (increased from 5)
+  message: 'Too many login attempts, please try again later.',
+  skipSuccessfulRequests: true,
+});
+
+app.use('/api/', limiter);
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -31,11 +82,21 @@ const authenticateToken = (req, res, next) => {
 };
 
 // --- Auth ---
-app.post('/api/register', (req, res) => {
+app.post('/api/register', authLimiter, (req, res) => {
   const { username, password } = req.body;
-  const hash = bcrypt.hashSync(password, 8);
   
-  const sql = 'INSERT INTO users (username, password_hash) VALUES (?, ?)';
+  // Validate input
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Username and password required' });
+  }
+  
+  if (password.length < 8) {
+    return res.status(400).json({ error: 'Password must be at least 8 characters' });
+  }
+  
+  const hash = bcrypt.hashSync(password, 10); // Increased from 8 to 10 rounds
+  
+  const sql = 'INSERT INTO users (username, password_hash, full_name, avatar_url) VALUES (?, ?, NULL, NULL)';
   db.run(sql, [username, hash], function(err) {
     if (err) return res.status(400).json({ error: 'User already exists' });
     
@@ -48,24 +109,181 @@ app.post('/api/register', (req, res) => {
     
     db.run(accountsSql, [userId, userId, userId], (accErr) => {
         if(accErr) console.error("Error creating default accounts");
-        const token = jwt.sign({ id: userId, username }, JWT_SECRET);
-        res.json({ token, user: { id: userId, username } });
+        const token = jwt.sign({ id: userId, username }, JWT_SECRET, { expiresIn: '7d' });
+        res.json({ token, user: { id: userId, username, fullName: null, avatarUrl: null } });
     });
   });
 });
 
-app.post('/api/login', (req, res) => {
+app.post('/api/login', authLimiter, (req, res) => {
   const { username, password } = req.body;
   
+  console.log('Login attempt:', { username, hasPassword: !!password, bodyKeys: Object.keys(req.body) });
+  
+  if (!username || !password) {
+    console.log('Missing credentials');
+    return res.status(400).json({ error: 'Username and password required' });
+  }
+  
   db.get('SELECT * FROM users WHERE username = ?', [username], (err, user) => {
-    if (err || !user) return res.status(400).json({ error: 'User not found' });
+    if (err) {
+      console.error('Database error during login:', err);
+      return res.status(500).json({ error: 'Database error' });
+    }
+    
+    if (!user) {
+      console.log('User not found:', username);
+      return res.status(400).json({ error: 'User not found' });
+    }
     
     if (!bcrypt.compareSync(password, user.password_hash)) {
+      console.log('Invalid password for user:', username);
       return res.status(401).json({ error: 'Invalid password' });
     }
 
-    const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET);
-    res.json({ token, user: { id: user.id, username: user.username } });
+    const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '7d' });
+    res.json({ 
+      token, 
+      user: { 
+        id: user.id, 
+        username: user.username,
+        fullName: user.full_name || null,
+        avatarUrl: user.avatar_url || null
+      } 
+    });
+  });
+});
+
+// --- User Profile ---
+app.get('/api/me', authenticateToken, (req, res) => {
+  db.get('SELECT id, username, full_name, avatar_url FROM users WHERE id = ?', [req.user.id], (err, user) => {
+    if (err || !user) return res.status(404).json({ error: 'User not found' });
+    res.json({
+      id: user.id,
+      username: user.username,
+      fullName: user.full_name || null,
+      avatarUrl: user.avatar_url || null
+    });
+  });
+});
+
+app.put('/api/me', authenticateToken, (req, res) => {
+  const { fullName, avatarUrl } = req.body;
+  const trimmedName = typeof fullName === 'string' ? fullName.trim() : null;
+  const trimmedAvatar = typeof avatarUrl === 'string' ? avatarUrl.trim() : null;
+
+  if (trimmedName && trimmedName.length > 120) {
+    return res.status(400).json({ error: 'Name is too long' });
+  }
+
+  db.run(
+    'UPDATE users SET full_name = ?, avatar_url = ? WHERE id = ?',
+    [trimmedName || null, trimmedAvatar || null, req.user.id],
+    function(err) {
+      if (err) return res.status(500).json({ error: err.message });
+      db.get('SELECT id, username, full_name, avatar_url FROM users WHERE id = ?', [req.user.id], (selectErr, user) => {
+        if (selectErr || !user) return res.status(404).json({ error: 'User not found' });
+        res.json({
+          id: user.id,
+          username: user.username,
+          fullName: user.full_name || null,
+          avatarUrl: user.avatar_url || null
+        });
+      });
+    }
+  );
+});
+
+// --- Two-Factor Authentication ---
+app.post('/api/2fa/enable', authenticateToken, (req, res) => {
+  const { totpSecret } = req.body;
+  
+  if (!totpSecret) {
+    return res.status(400).json({ error: 'TOTP secret required' });
+  }
+
+  db.run(
+    'UPDATE users SET totp_secret = ?, totp_enabled = 1 WHERE id = ?',
+    [totpSecret, req.user.id],
+    function(err) {
+      if (err) return res.status(500).json({ error: 'Failed to enable 2FA' });
+      res.json({ message: '2FA enabled successfully' });
+    }
+  );
+});
+
+app.post('/api/2fa/disable', authenticateToken, (req, res) => {
+  db.run(
+    'UPDATE users SET totp_secret = NULL, totp_enabled = 0 WHERE id = ?',
+    [req.user.id],
+    function(err) {
+      if (err) return res.status(500).json({ error: 'Failed to disable 2FA' });
+      res.json({ message: '2FA disabled successfully' });
+    }
+  );
+});
+
+app.get('/api/2fa/status', authenticateToken, (req, res) => {
+  db.get('SELECT totp_enabled, totp_secret FROM users WHERE id = ?', [req.user.id], (err, user) => {
+    if (err || !user) return res.status(404).json({ error: 'User not found' });
+    res.json({ 
+      enabled: user.totp_enabled === 1,
+      hasSecret: !!user.totp_secret
+    });
+  });
+});
+
+app.post('/api/2fa/verify', authenticateToken, (req, res) => {
+  const { code } = req.body;
+  
+  if (!code || code.length !== 6) {
+    return res.status(400).json({ error: 'Invalid code format' });
+  }
+
+  db.get('SELECT totp_secret FROM users WHERE id = ?', [req.user.id], (err, user) => {
+    if (err || !user) return res.status(404).json({ error: 'User not found' });
+    if (!user.totp_secret) return res.status(400).json({ error: '2FA not enabled' });
+
+    // Verify TOTP code server-side
+    const otpauth = require('otpauth');
+    const totp = new otpauth.TOTP({
+      secret: user.totp_secret,
+      digits: 6,
+      period: 30
+    });
+
+    const isValid = totp.validate({ token: code, window: 1 }) !== null;
+    
+    if (!isValid) {
+      return res.status(401).json({ error: 'Invalid 2FA code' });
+    }
+
+    res.json({ message: '2FA verified successfully' });
+  });
+});
+
+// --- End-to-End Encryption ---
+app.post('/api/encryption/setup', authenticateToken, (req, res) => {
+  const { salt } = req.body;
+  
+  if (!salt) {
+    return res.status(400).json({ error: 'Encryption salt required' });
+  }
+
+  db.run(
+    'UPDATE users SET encryption_salt = ? WHERE id = ?',
+    [salt, req.user.id],
+    function(err) {
+      if (err) return res.status(500).json({ error: 'Failed to setup encryption' });
+      res.json({ message: 'Encryption setup complete' });
+    }
+  );
+});
+
+app.get('/api/encryption/salt', authenticateToken, (req, res) => {
+  db.get('SELECT encryption_salt FROM users WHERE id = ?', [req.user.id], (err, user) => {
+    if (err || !user) return res.status(404).json({ error: 'User not found' });
+    res.json({ salt: user.encryption_salt });
   });
 });
 
@@ -79,10 +297,15 @@ app.get('/api/accounts', authenticateToken, (req, res) => {
 
 app.post('/api/accounts', authenticateToken, (req, res) => {
   const { name, currency, balance = 0 } = req.body;
+  console.log('Creating account:', { user_id: req.user.id, name, currency, balance });
   const sql = 'INSERT INTO accounts (user_id, name, currency, type, balance) VALUES (?, ?, ?, ?, ?)';
   
   db.run(sql, [req.user.id, name, currency, 'bank', balance], function(err) {
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) {
+      console.error('Account creation error:', err.message);
+      return res.status(500).json({ error: err.message });
+    }
+    console.log('Account created successfully:', this.lastID);
     res.json({ id: this.lastID, user_id: req.user.id, name, currency, type: 'bank', balance });
   });
 });
@@ -246,16 +469,13 @@ app.post('/api/chat', authenticateToken, async (req, res) => {
       );
     });
 
-    // Use Gemini AI
-    const { GoogleGenerativeAI } = require('@google/generative-ai');
-    const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY);
-    
+    // Build prompt
     const assetsSummary = accounts.map(a => 
-      `- ${a.name}: ${a.balance.toFixed(2)} ${a.currency}`
+      `- ${a.name}: ${(a.balance || 0).toFixed(2)} ${a.currency}`
     ).join('\n');
 
     const txSummary = transactions.map(t => 
-      `- ${t.date}: ${t.type.toUpperCase()} of ${t.amount.toFixed(2)} ${t.currency} for ${t.category} (${t.description})`
+      `- ${t.date}: ${t.type.toUpperCase()} of ${(t.amount || 0).toFixed(2)} ${t.currency} for ${t.category} (${t.description || 'No description'})`
     ).join('\n');
 
     const prompt = `
@@ -276,11 +496,31 @@ Instructions:
 4. Format the response with Markdown for readability.
     `;
 
-    const model = genAI.getGenerativeModel({ model: "gemini-pro" });
-    const result = await model.generateContent(prompt);
-    const response = result.response;
-    const text = response.text();
+    // Call Gemini via REST to avoid SDK/model version mismatches
+    const apiKey = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({ error: 'Missing GOOGLE_API_KEY/GEMINI_API_KEY on the server' });
+    }
 
+    const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }]}]
+      })
+    });
+
+    if (!resp.ok) {
+      const errBody = await resp.text();
+      console.error('Gemini HTTP error', resp.status, errBody);
+      return res.status(500).json({
+        error: 'Failed to generate AI response',
+        details: errBody
+      });
+    }
+
+    const data = await resp.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || 'No response from model';
     res.json({ response: text });
   } catch (error) {
     console.error('AI Chat Error:', error);
@@ -290,6 +530,20 @@ Instructions:
       details: error.message,
       hint: 'Check that your GOOGLE_API_KEY is valid and the Gemini API is enabled'
     });
+  }
+});
+
+// Serve static files from the React app (must be after API routes)
+const path = require('path');
+app.use(express.static(path.join(__dirname, '../dist')));
+
+// The "catchall" handler: for any request that doesn't match API routes or static files,
+// send back the index.html file for client-side routing
+app.use((req, res, next) => {
+  if (!req.path.startsWith('/api')) {
+    res.sendFile(path.join(__dirname, '../dist/index.html'));
+  } else {
+    next();
   }
 });
 

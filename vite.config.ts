@@ -7,7 +7,16 @@ export default defineConfig(({ mode }) => {
     return {
       server: {
         port: 3000,
-        host: '0.0.0.0',
+        strictPort: false, // Allow different port if 3000 is busy
+        host: '0.0.0.0', // Already configured! This allows external access
+        proxy: {
+          '/api': {
+            target: 'http://localhost:3001',
+            changeOrigin: true,
+            secure: false,
+            rewrite: (path) => path // Keep the /api prefix
+          }
+        }
       },
       plugins: [react()],
       define: {

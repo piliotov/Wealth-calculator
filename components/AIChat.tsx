@@ -1,12 +1,116 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { sendChatMessage } from '../services/api';
 import { User, Account, ChatMessage } from '../types';
-import { Bot, Send, User as UserIcon, Loader2, Sparkles, X, MessageSquareText, Trash2 } from 'lucide-react';
+import { Send, Loader2, X, MessageCircle, Trash2 } from 'lucide-react';
 
 interface Props {
   user: User;
   accounts: Account[];
 }
+
+// Simple markdown renderer for chat messages
+const renderMarkdown = (text: string): React.ReactNode => {
+  // Split into lines and process
+  const lines = text.split('\n');
+  const elements: React.ReactNode[] = [];
+  let inList = false;
+  let listItems: string[] = [];
+  
+  const processInlineMarkdown = (line: string): React.ReactNode => {
+    // Process bold (**text** or __text__)
+    const parts: React.ReactNode[] = [];
+    let remaining = line;
+    let key = 0;
+    
+    while (remaining.length > 0) {
+      // Bold
+      const boldMatch = remaining.match(/\*\*(.+?)\*\*|__(.+?)__/);
+      if (boldMatch && boldMatch.index !== undefined) {
+        if (boldMatch.index > 0) {
+          parts.push(<span key={key++}>{remaining.slice(0, boldMatch.index)}</span>);
+        }
+        parts.push(<strong key={key++} className="font-semibold text-white">{boldMatch[1] || boldMatch[2]}</strong>);
+        remaining = remaining.slice(boldMatch.index + boldMatch[0].length);
+        continue;
+      }
+      
+      // No more matches
+      parts.push(<span key={key++}>{remaining}</span>);
+      break;
+    }
+    
+    return parts.length === 1 ? parts[0] : <>{parts}</>;
+  };
+  
+  const flushList = () => {
+    if (listItems.length > 0) {
+      elements.push(
+        <ul key={elements.length} className="list-disc list-inside space-y-1 my-2 text-slate-300">
+          {listItems.map((item, idx) => (
+            <li key={idx}>{processInlineMarkdown(item)}</li>
+          ))}
+        </ul>
+      );
+      listItems = [];
+      inList = false;
+    }
+  };
+  
+  lines.forEach((line, idx) => {
+    const trimmedLine = line.trim();
+    
+    // Empty line
+    if (!trimmedLine) {
+      flushList();
+      elements.push(<div key={idx} className="h-2" />);
+      return;
+    }
+    
+    // List item (* or -)
+    if (trimmedLine.startsWith('* ') || trimmedLine.startsWith('- ')) {
+      inList = true;
+      listItems.push(trimmedLine.slice(2));
+      return;
+    }
+    
+    // If we were in a list, flush it
+    flushList();
+    
+    // Headers
+    if (trimmedLine.startsWith('### ')) {
+      elements.push(<h4 key={idx} className="font-semibold text-white text-sm mt-2 mb-1">{processInlineMarkdown(trimmedLine.slice(4))}</h4>);
+      return;
+    }
+    if (trimmedLine.startsWith('## ')) {
+      elements.push(<h3 key={idx} className="font-semibold text-white mt-2 mb-1">{processInlineMarkdown(trimmedLine.slice(3))}</h3>);
+      return;
+    }
+    if (trimmedLine.startsWith('# ')) {
+      elements.push(<h2 key={idx} className="font-bold text-white text-lg mt-2 mb-1">{processInlineMarkdown(trimmedLine.slice(2))}</h2>);
+      return;
+    }
+    
+    // Numbered list (1. 2. etc)
+    const numberedMatch = trimmedLine.match(/^(\d+)\.\s+(.+)/);
+    if (numberedMatch) {
+      elements.push(
+        <div key={idx} className="flex gap-2 text-slate-300 my-0.5">
+          <span className="text-slate-500 w-4 shrink-0">{numberedMatch[1]}.</span>
+          <span>{processInlineMarkdown(numberedMatch[2])}</span>
+        </div>
+      );
+      return;
+    }
+    
+    // Regular paragraph
+    elements.push(<p key={idx} className="text-slate-300 my-1">{processInlineMarkdown(trimmedLine)}</p>);
+  });
+  
+  // Flush any remaining list
+  flushList();
+  
+  return <div className="space-y-0.5">{elements}</div>;
+};
 
 const FloatingAIChat: React.FC<Props> = ({ user, accounts }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -15,7 +119,6 @@ const FloatingAIChat: React.FC<Props> = ({ user, accounts }) => {
   const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Initialize with welcome message
   useEffect(() => {
     const storedHistory = localStorage.getItem(`chat_${user.id}`);
     if (storedHistory) {
@@ -24,13 +127,12 @@ const FloatingAIChat: React.FC<Props> = ({ user, accounts }) => {
       setMessages([{
         id: 'init',
         role: 'assistant',
-        text: `Hello ${user.username}! I'm your Virtual CFO. I have access to your account balances and recent transaction history.`,
+        text: `Hey! I can help you understand your spending and answer questions about your finances.`,
         timestamp: Date.now()
       }]);
     }
   }, [user.id, user.username]);
 
-  // Save history to localStorage on update
   useEffect(() => {
     if (messages.length > 0) {
       localStorage.setItem(`chat_${user.id}`, JSON.stringify(messages));
@@ -75,7 +177,7 @@ const FloatingAIChat: React.FC<Props> = ({ user, accounts }) => {
       setMessages(prev => [...prev, { 
         id: crypto.randomUUID(), 
         role: 'assistant', 
-        text: `Sorry, I had trouble connecting: ${err.message || 'Please try again.'}`,
+        text: `Couldn't connect. Try again in a moment.`,
         timestamp: Date.now()
       }]);
     } finally {
@@ -87,7 +189,7 @@ const FloatingAIChat: React.FC<Props> = ({ user, accounts }) => {
     const freshStart: ChatMessage[] = [{
       id: crypto.randomUUID(),
       role: 'assistant',
-      text: 'Chat history cleared. How can I help you now?',
+      text: 'Chat cleared. What would you like to know?',
       timestamp: Date.now()
     }];
     setMessages(freshStart);
@@ -96,93 +198,85 @@ const FloatingAIChat: React.FC<Props> = ({ user, accounts }) => {
 
   return (
     <>
-      {/* Floating Toggle Button */}
+      {/* Floating Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className={`fixed bottom-6 right-6 p-4 rounded-full shadow-2xl transition-all z-50 ${
-          isOpen ? 'bg-slate-700 rotate-90' : 'bg-primary hover:bg-blue-600 hover:scale-105'
+        className={`fixed bottom-4 right-4 sm:bottom-6 sm:right-6 w-12 h-12 sm:w-14 sm:h-14 rounded-full shadow-lg transition-all z-50 flex items-center justify-center ${
+          isOpen ? 'bg-slate-700' : 'bg-blue-600 hover:bg-blue-500'
         }`}
       >
-        {isOpen ? <X className="text-white w-6 h-6" /> : <MessageSquareText className="text-white w-6 h-6" />}
+        {isOpen ? <X className="text-white w-5 h-5" /> : <MessageCircle className="text-white w-5 h-5 sm:w-6 sm:h-6" />}
       </button>
 
-      {/* Chat Window */}
-      <div className={`fixed bottom-24 right-6 w-80 sm:w-96 bg-surface border border-slate-700 rounded-2xl shadow-2xl z-50 flex flex-col overflow-hidden transition-all duration-300 origin-bottom-right ${
-        isOpen ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none'
-      }`} style={{ maxHeight: 'calc(100vh - 120px)', height: '500px' }}>
-        
-        {/* Header */}
-        <div className="bg-slate-900 p-4 border-b border-slate-700 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="p-1.5 bg-indigo-500/20 rounded-lg">
-              <Sparkles className="w-4 h-4 text-indigo-400" />
-            </div>
+      {/* Chat Panel */}
+      {isOpen && (
+        <div className="fixed inset-0 sm:inset-auto sm:bottom-20 sm:right-4 sm:w-80 md:w-96 sm:h-[500px] sm:max-h-[70vh] bg-slate-900 sm:rounded-2xl sm:border sm:border-slate-700 z-50 flex flex-col">
+          
+          {/* Header */}
+          <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
             <div>
-              <h3 className="font-semibold text-white text-sm">Gemini CFO</h3>
-              <p className="text-[10px] text-slate-400">Context aware</p>
+              <h3 className="font-medium text-white text-sm">Assistant</h3>
+              <p className="text-xs text-slate-500">Ask about your finances</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={clearChat} className="p-2 text-slate-500 hover:text-slate-300 rounded-lg" title="Clear chat">
+                <Trash2 size={16} />
+              </button>
+              <button onClick={() => setIsOpen(false)} className="sm:hidden p-2 text-slate-500 hover:text-white rounded-lg">
+                <X size={18} />
+              </button>
             </div>
           </div>
-          <button onClick={clearChat} className="p-1 text-slate-500 hover:text-red-400" title="Clear History">
-            <Trash2 className="w-4 h-4" />
-          </button>
-        </div>
 
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-900/50">
-          {messages.map((msg) => (
-            <div
-              key={msg.id}
-              className={`flex gap-2 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}
-            >
-              <div className={`
-                w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-1
-                ${msg.role === 'assistant' ? 'bg-indigo-600' : 'bg-slate-600'}
-              `}>
-                {msg.role === 'assistant' ? <Bot className="w-3 h-3 text-white" /> : <UserIcon className="w-3 h-3 text-white" />}
+          {/* Messages */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-3">
+            {messages.map((msg) => (
+              <div
+                key={msg.id}
+                className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+              >
+                <div className={`
+                  max-w-[85%] rounded-2xl px-4 py-2.5 text-sm
+                  ${msg.role === 'assistant' 
+                    ? 'bg-slate-800 text-slate-200' 
+                    : 'bg-blue-600 text-white'}
+                `}>
+                  {msg.role === 'assistant' ? renderMarkdown(msg.text) : msg.text}
+                </div>
               </div>
-              
-              <div className={`
-                max-w-[85%] rounded-2xl px-3 py-2 text-xs sm:text-sm leading-relaxed whitespace-pre-wrap
-                ${msg.role === 'assistant' 
-                  ? 'bg-slate-700 text-slate-100 rounded-tl-none' 
-                  : 'bg-primary text-white rounded-tr-none'}
-              `}>
-                {msg.text}
+            ))}
+            {loading && (
+              <div className="flex justify-start">
+                <div className="bg-slate-800 text-slate-400 px-4 py-2.5 rounded-2xl flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span className="text-sm">Thinking...</span>
+                </div>
               </div>
-            </div>
-          ))}
-          {loading && (
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+
+          {/* Input */}
+          <form onSubmit={handleSend} className="p-3 border-t border-slate-800">
             <div className="flex gap-2">
-               <div className="w-6 h-6 rounded-full bg-indigo-600 flex items-center justify-center mt-1">
-                <Bot className="w-3 h-3 text-white" />
-              </div>
-              <div className="bg-slate-700 text-slate-300 px-3 py-2 rounded-2xl rounded-tl-none flex items-center gap-2">
-                <Loader2 className="w-3 h-3 animate-spin" />
-                <span className="text-xs">Thinking...</span>
-              </div>
+              <input
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder="Ask something..."
+                className="flex-1 bg-slate-800 border-none rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-slate-500"
+              />
+              <button
+                type="submit"
+                disabled={loading || !input.trim()}
+                className="px-4 bg-blue-600 text-white rounded-xl hover:bg-blue-500 disabled:opacity-50 transition-colors"
+              >
+                <Send size={18} />
+              </button>
             </div>
-          )}
-          <div ref={messagesEndRef} />
+          </form>
         </div>
-
-        {/* Input */}
-        <form onSubmit={handleSend} className="p-3 bg-slate-900 border-t border-slate-700 flex gap-2">
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask..."
-            className="flex-1 bg-surface border border-slate-700 rounded-full px-4 py-2 text-white text-sm focus:outline-none focus:border-indigo-500 placeholder-slate-500"
-          />
-          <button
-            type="submit"
-            disabled={loading || !input.trim()}
-            className="p-2 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            <Send className="w-4 h-4" />
-          </button>
-        </form>
-      </div>
+      )}
     </>
   );
 };
