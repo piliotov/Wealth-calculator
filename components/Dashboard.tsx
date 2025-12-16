@@ -1,10 +1,11 @@
-import React, { useMemo, useState } from 'react';
-import { Transaction, Account, EXCHANGE_RATES, TransactionType } from '../types';
+import React, { useMemo, useState, useEffect } from 'react';
+import { Transaction, Account, TransactionType, Currency } from '../types';
 import { PieChart, Pie, Cell, ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { Wallet, TrendingUp, Building2, Pencil, X, Save, Trash2, Check } from 'lucide-react';
 import { updateTransaction, deleteTransaction, addTransaction } from '../services/api';
 import { useToast } from './ToastContainer';
 import ConfirmDialog from './ConfirmDialog';
+import { fetchExchangeRates, getExchangeRates, toEUR, type ExchangeRates } from '../services/exchangeRates';
 
 interface Props {
   transactions: Transaction[];
@@ -17,13 +18,19 @@ const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'
 const Dashboard: React.FC<Props> = ({ transactions, accounts, onUpdate }) => {
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<{ isOpen: boolean; txId?: number; loan?: Transaction } | null>(null);
+  const [rates, setRates] = useState<ExchangeRates>(getExchangeRates());
   const { showToast } = useToast();
+
+  // Fetch live exchange rates on mount
+  useEffect(() => {
+    fetchExchangeRates().then(setRates).catch(console.warn);
+  }, []);
 
   const isTransferCategory = (category: string) => category.toLowerCase().includes('transfer');
   const isLoanCategory = (category: string) => category.toLowerCase().includes('loan');
 
-  const expenseTransactions = useMemo(
-    () => transactions.filter(t => t.type === 'expense' && !isTransferCategory(t.category) && !isLoanCategory(t.category)),
+  const nonTransferTransactions = useMemo(
+    () => transactions.filter(t => !isTransferCategory(t.category) && !isLoanCategory(t.category)),
     [transactions]
   );
   
@@ -31,26 +38,24 @@ const Dashboard: React.FC<Props> = ({ transactions, accounts, onUpdate }) => {
     // 1. Calculate Net Worth in EUR
     let totalNetWorthEUR = 0;
     accounts.forEach(acc => {
-      const rate = acc.currency === 'BGN' ? (1/EXCHANGE_RATES.BGN) : acc.currency === 'USD' ? (1/EXCHANGE_RATES.USD) : 1;
-      totalNetWorthEUR += acc.balance * rate;
+      const amountInEUR = toEUR(acc.balance, acc.currency as Currency, rates);
+      totalNetWorthEUR += amountInEUR;
     });
 
     // 2. Recent Spending stats (Last 30 days) - Displayed in EUR approximation for aggregate
     const income = transactions.filter(t => t.type === 'income').reduce((acc, t) => {
-      const rate = t.currency === 'BGN' ? (1/EXCHANGE_RATES.BGN) : t.currency === 'USD' ? (1/EXCHANGE_RATES.USD) : 1;
-      return acc + (t.amount * rate);
+      return acc + toEUR(t.amount, t.currency as Currency, rates);
     }, 0);
     
-    const expenses = expenseTransactions.reduce((acc, t) => {
-      const rate = t.currency === 'BGN' ? (1/EXCHANGE_RATES.BGN) : t.currency === 'USD' ? (1/EXCHANGE_RATES.USD) : 1;
-      return acc + (t.amount * rate);
+    const expenses = transactions.filter(t => t.type === 'expense' && !isTransferCategory(t.category) && !isLoanCategory(t.category)).reduce((acc, t) => {
+      return acc + toEUR(t.amount, t.currency as Currency, rates);
     }, 0);
 
     // 3. Category Breakdown (Expenses) - Exclude transfers
     const categories: Record<string, number> = {};
-    expenseTransactions.forEach(t => {
-      const rate = t.currency === 'BGN' ? (1/EXCHANGE_RATES.BGN) : t.currency === 'USD' ? (1/EXCHANGE_RATES.USD) : 1;
-      categories[t.category] = (categories[t.category] || 0) + (t.amount * rate);
+    transactions.filter(t => t.type === 'expense' && !isTransferCategory(t.category) && !isLoanCategory(t.category)).forEach(t => {
+      const amountInEUR = toEUR(t.amount, t.currency as Currency, rates);
+      categories[t.category] = (categories[t.category] || 0) + amountInEUR;
     });
     
     const pieData = Object.entries(categories).map(([name, value]) => ({ name, value }));
@@ -58,8 +63,8 @@ const Dashboard: React.FC<Props> = ({ transactions, accounts, onUpdate }) => {
     // 3b. Income Categories - Exclude transfers
     const incomeCategories: Record<string, number> = {};
     transactions.filter(t => t.type === 'income' && !isTransferCategory(t.category) && !isLoanCategory(t.category)).forEach(t => {
-      const rate = t.currency === 'BGN' ? (1/EXCHANGE_RATES.BGN) : t.currency === 'USD' ? (1/EXCHANGE_RATES.USD) : 1;
-      incomeCategories[t.category] = (incomeCategories[t.category] || 0) + (t.amount * rate);
+      const amountInEUR = toEUR(t.amount, t.currency as Currency, rates);
+      incomeCategories[t.category] = (incomeCategories[t.category] || 0) + amountInEUR;
     });
     
     const incomePieData = Object.entries(incomeCategories).map(([name, value]) => ({ name, value }));
@@ -73,9 +78,9 @@ const Dashboard: React.FC<Props> = ({ transactions, accounts, onUpdate }) => {
     historyPoints.push({ date: new Date().toLocaleDateString(), balance: runningWorth });
 
     for (const t of reversedTx) {
-      const rate = t.currency === 'BGN' ? (1/EXCHANGE_RATES.BGN) : t.currency === 'USD' ? (1/EXCHANGE_RATES.USD) : 1;
-      if (t.type === 'income') runningWorth -= (t.amount * rate);
-      else runningWorth += (t.amount * rate);
+      const amountInEUR = toEUR(t.amount, t.currency as Currency, rates);
+      if (t.type === 'income') runningWorth -= amountInEUR;
+      else runningWorth += amountInEUR;
       
       historyPoints.push({ date: new Date(t.date).toLocaleDateString(), balance: runningWorth });
     }
@@ -88,7 +93,7 @@ const Dashboard: React.FC<Props> = ({ transactions, accounts, onUpdate }) => {
       incomePieData, 
       chartData: historyPoints.reverse() 
     };
-  }, [transactions, accounts]);
+  }, [transactions, accounts, rates]);
 
   const formatEUR = (val: number) => 
     new Intl.NumberFormat('en-EU', { style: 'currency', currency: 'EUR' }).format(val);
@@ -307,7 +312,7 @@ const Dashboard: React.FC<Props> = ({ transactions, accounts, onUpdate }) => {
             <h3 className="text-sm font-medium text-slate-300">Recent Activity</h3>
         </div>
         <div className="max-h-[400px] overflow-y-auto">
-            {expenseTransactions.map(t => {
+            {[...nonTransferTransactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(t => {
               const isLoan = t.category === 'Loan Given' || t.category === 'Loan Received';
               return (
             <div key={t.id} className="p-3 md:p-4 border-b border-slate-700/30 last:border-0 active:bg-slate-700/30 md:hover:bg-slate-700/20 transition-colors group">
@@ -333,33 +338,32 @@ const Dashboard: React.FC<Props> = ({ transactions, accounts, onUpdate }) => {
                     <span className={`text-sm font-semibold text-right whitespace-nowrap ${t.type === 'income' ? 'text-teal-400' : 'text-red-400'}`}>
                         {t.type === 'income' ? '+' : '-'}{t.amount.toFixed(2)} {t.currency}
                     </span>
-                    {/* Desktop actions */}
-                    <div className="hidden md:flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    {/* Action buttons - larger touch targets on mobile, compact on desktop hover */}
+                    <div className="flex gap-1 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                       {isLoan && (
                         <button 
                           onClick={() => handleRepayLoan(t)}
-                          className="p-1.5 text-slate-400 hover:text-teal-400 bg-slate-800/80 rounded-lg"
+                          className="p-2 md:p-1.5 text-slate-400 hover:text-teal-400 active:text-teal-500 bg-slate-800/80 rounded-lg touch-manipulation"
                           title="Mark as Repaid"
                         >
-                          <Check className="w-4 h-4" />
+                          <Check className="w-5 h-5 md:w-4 md:h-4" />
                         </button>
                       )}
                       <button 
                           onClick={() => setEditingTx(t)}
-                          className="p-1.5 text-slate-400 hover:text-white bg-slate-800/80 rounded-lg"
+                          className="p-2 md:p-1.5 text-slate-400 hover:text-white active:text-white bg-slate-800/80 rounded-lg touch-manipulation"
                           title="Edit"
                       >
-                          <Pencil className="w-4 h-4" />
+                          <Pencil className="w-5 h-5 md:w-4 md:h-4" />
                       </button>
                       <button 
                           onClick={() => handleDelete(t.id)}
-                          className="p-1.5 text-slate-400 hover:text-red-400 bg-slate-800/80 rounded-lg"
+                          className="p-2 md:p-1.5 text-slate-400 hover:text-red-400 active:text-red-500 bg-slate-800/80 rounded-lg touch-manipulation"
                           title="Delete"
                       >
-                          <Trash2 className="w-4 h-4" />
+                          <Trash2 className="w-5 h-5 md:w-4 md:h-4" />
                       </button>
                     </div>
-                    {/* Mobile menu trigger - could be added later */}
                 </div>
                 </div>
             </div>

@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
-import { Account } from '../types';
+import React, { useState, useEffect } from 'react';
+import { Account, Currency } from '../types';
 import { ArrowRightLeft, Loader2, Plus } from 'lucide-react';
 import { useToast } from './ToastContainer';
+import { fetchExchangeRates, convertCurrency, getExchangeRates, type ExchangeRates } from '../services/exchangeRates';
 
 interface Props {
   accounts: Account[];
@@ -15,7 +16,12 @@ const TransferForm: React.FC<Props> = ({ accounts, onTransfer }) => {
   const [description, setDescription] = useState('');
   const [loading, setLoading] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
+  const [rates, setRates] = useState<ExchangeRates>(getExchangeRates());
   const { showToast } = useToast();
+
+  useEffect(() => {
+    fetchExchangeRates().then(setRates).catch(console.warn);
+  }, []);
 
   React.useEffect(() => {
     if (accounts.length > 0) {
@@ -52,6 +58,10 @@ const TransferForm: React.FC<Props> = ({ accounts, onTransfer }) => {
   const fromAccount = accounts.find(a => a.id.toString() === fromAccountId);
   const toAccount = accounts.find(a => a.id.toString() === toAccountId);
   const needsConversion = fromAccount?.currency !== toAccount?.currency;
+  
+  const convertedAmount = needsConversion && amount && fromAccount && toAccount
+    ? convertCurrency(parseFloat(amount), fromAccount.currency as Currency, toAccount.currency as Currency, rates)
+    : parseFloat(amount);
 
   return (
     <div className="bg-slate-800/50 rounded-2xl border border-slate-700/50 overflow-hidden">
@@ -125,9 +135,15 @@ const TransferForm: React.FC<Props> = ({ accounts, onTransfer }) => {
               className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-xl text-white font-medium focus:outline-none focus:border-blue-500"
               placeholder="0.00"
             />
-            {needsConversion && (
-              <p className="text-xs text-amber-400 mt-1">
-                ⚠ Different currencies - conversion at market rate
+            {needsConversion && amount && !isNaN(parseFloat(amount)) && (
+              <p className="text-xs text-amber-400 mt-1.5 flex items-center gap-1">
+                <ArrowRightLeft className="w-3 h-3" />
+                Will receive: {convertedAmount.toFixed(2)} {toAccount?.currency}
+              </p>
+            )}
+            {needsConversion && (!amount || amount === '') && (
+              <p className="text-xs text-slate-500 mt-1">
+                ⚠ Different currencies - live exchange rates apply
               </p>
             )}
           </div>

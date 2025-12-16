@@ -9,6 +9,7 @@ interface Props {
 }
 
 const TransactionForm: React.FC<Props> = ({ accounts, onAdd }) => {
+  const [type, setType] = useState<'income' | 'expense'>('expense');
   const [accountId, setAccountId] = useState(accounts[0]?.id?.toString() || '');
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState('Food');
@@ -21,6 +22,10 @@ const TransactionForm: React.FC<Props> = ({ accounts, onAdd }) => {
       setAccountId(accounts[0].id.toString());
     }
   }, [accounts, accountId]);
+
+  React.useEffect(() => {
+    setCategory(type === 'income' ? 'Salary' : 'Food');
+  }, [type]);
 
   // Handle amount input - convert comma to dot for decimal
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -39,7 +44,7 @@ const TransactionForm: React.FC<Props> = ({ accounts, onAdd }) => {
     const selectedAccount = accounts.find(a => a.id.toString() === accountId);
     
     await onAdd({
-      type: 'expense',
+      type,
       accountId: Number(accountId),
       amount: parseFloat(amount),
       category,
@@ -51,27 +56,55 @@ const TransactionForm: React.FC<Props> = ({ accounts, onAdd }) => {
     setLoading(false);
     setAmount('');
     setDescription('');
-    setCategory('Food');
-    showToast('Expense added', 'success');
+    setCategory(type === 'income' ? 'Salary' : 'Food');
+    showToast(`${type === 'income' ? 'Income' : 'Expense'} added`, 'success');
   };
 
-  const categories = ['Food', 'Housing', 'Transport', 'Entertainment', 'Utilities', 'Shopping', 'Health', 'Travel', 'Other'];
+  const categories = type === 'income'
+    ? ['Salary', 'Freelance', 'Investment', 'Other']
+    : ['Food', 'Housing', 'Transport', 'Entertainment', 'Utilities', 'Shopping', 'Health', 'Travel', 'Other'];
 
   return (
     <div className="bg-slate-800/50 rounded-2xl border border-slate-700/50 overflow-hidden">
       {/* Header */}
       <div className="flex items-center gap-3 p-4 border-b border-slate-700/30">
-        <div className="w-10 h-10 rounded-xl bg-red-600/20 flex items-center justify-center">
-          <Plus className="w-5 h-5 text-red-400" />
+        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+          type === 'expense' ? 'bg-red-600/20' : 'bg-green-600/20'
+        }`}>
+          <Plus className={`w-5 h-5 ${
+            type === 'expense' ? 'text-red-400' : 'text-green-400'
+          }`} />
         </div>
         <div>
-          <h3 className="font-medium text-white">Add Expense</h3>
-          <p className="text-xs text-slate-500">Track your spending</p>
+          <h3 className="font-medium text-white">Add Transaction</h3>
+          <p className="text-xs text-slate-500">Track income & expenses</p>
         </div>
       </div>
       
       {/* Form - always visible */}
       <form onSubmit={handleSubmit} className="px-4 pb-4 pt-3 space-y-4">
+        {/* Type toggle */}
+        <div className="flex gap-2 p-1 bg-slate-900/50 rounded-xl">
+          <button
+            type="button"
+            onClick={() => setType('expense')}
+            className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+              type === 'expense' ? 'bg-red-500 text-white' : 'text-slate-400'
+            }`}
+          >
+            Expense
+          </button>
+          <button
+            type="button"
+            onClick={() => setType('income')}
+            className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+              type === 'income' ? 'bg-green-500 text-white' : 'text-slate-400'
+            }`}
+          >
+            Income
+          </button>
+        </div>
+
         {/* Amount - big and prominent */}
         <div>
           <label className="block text-xs text-slate-500 mb-1.5">Amount</label>
@@ -126,9 +159,13 @@ const TransactionForm: React.FC<Props> = ({ accounts, onAdd }) => {
           <button
             type="submit"
             disabled={loading || accounts.length === 0 || !amount}
-            className="w-full font-medium py-3 rounded-xl transition-colors flex justify-center items-center gap-2 bg-red-500 hover:bg-red-600 text-white disabled:opacity-50"
+            className={`w-full font-medium py-3 rounded-xl transition-colors flex justify-center items-center gap-2 ${
+              type === 'expense'
+                ? 'bg-red-500 hover:bg-red-600 text-white'
+                : 'bg-green-500 hover:bg-green-600 text-white'
+            } disabled:opacity-50`}
           >
-            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Add Expense'}
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : `Add ${type === 'income' ? 'Income' : 'Expense'}`}
           </button>
         </form>
     </div>

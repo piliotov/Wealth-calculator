@@ -1,7 +1,8 @@
-import React, { useState, useMemo } from 'react';
-import { Transaction, EXCHANGE_RATES } from '../types';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Transaction, Currency } from '../types';
 import { Calendar, TrendingDown, AlertCircle, CheckCircle, Edit2, Save, X } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
+import { fetchExchangeRates, toEUR, getExchangeRates, type ExchangeRates } from '../services/exchangeRates';
 
 interface Props {
   transactions: Transaction[];
@@ -23,10 +24,15 @@ const DEFAULT_BUDGETS: Budget[] = [
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
 
 const MonthlyBudget: React.FC<Props> = ({ transactions }) => {
+  const [rates, setRates] = useState<ExchangeRates>(getExchangeRates());
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   });
+
+  useEffect(() => {
+    fetchExchangeRates().then(setRates).catch(console.warn);
+  }, []);
   
   const [budgets, setBudgets] = useState<Budget[]>(() => {
     const saved = localStorage.getItem('monthly_budgets');
@@ -80,9 +86,7 @@ const MonthlyBudget: React.FC<Props> = ({ transactions }) => {
     // Calculate spending per category in EUR
     const categorySpending: Record<string, number> = {};
     monthTransactions.forEach(t => {
-      const rate = t.currency === 'BGN' ? (1 / EXCHANGE_RATES.BGN) : 
-                   t.currency === 'USD' ? (1 / EXCHANGE_RATES.USD) : 1;
-      const amountEUR = t.amount * rate;
+      const amountEUR = toEUR(t.amount, t.currency as Currency, rates);
       categorySpending[t.category] = (categorySpending[t.category] || 0) + amountEUR;
     });
 
@@ -132,7 +136,7 @@ const MonthlyBudget: React.FC<Props> = ({ transactions }) => {
       totalRemaining: Math.round((totalBudget - totalSpent) * 100) / 100,
       pieData
     };
-  }, [selectedMonth, transactions, budgets]);
+  }, [selectedMonth, transactions, budgets, rates]);
 
   const handleEditBudget = (category: string, currentLimit: number) => {
     setEditingBudget(category);

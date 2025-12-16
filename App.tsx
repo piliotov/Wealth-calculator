@@ -1,20 +1,22 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, lazy, Suspense } from 'react';
 import Auth from './components/Auth';
-import Dashboard from './components/Dashboard';
-import TransactionForm from './components/TransactionForm';
-import TransferForm from './components/TransferForm';
-import LendingTracker from './components/LendingTracker';
-import FloatingAIChat from './components/AIChat';
-import SalaryCalculator from './components/SalaryCalculator';
-import Profile from './components/Profile';
-import MonthlyBudget from './components/MonthlyBudget';
-import GoalsTracker from './components/GoalsTracker';
-import RecurringTransactions from './components/RecurringTransactions';
-import FinancialInsights from './components/FinancialInsights';
 import { ToastContainer } from './components/ToastContainer';
 import { getCurrentUser, logoutUser, getTransactions, addTransaction, getAccounts, transferMoney, fetchUserProfile } from './services/api';
 import { User, Transaction, Account, AppView } from './types';
-import { LayoutDashboard, LogOut, Calculator, User as UserIcon, PiggyBank, Target, RefreshCw, PieChart, Menu, X } from 'lucide-react';
+import { LayoutDashboard, LogOut, Calculator, User as UserIcon, PiggyBank, Target, RefreshCw, PieChart, Menu, X, Loader2 } from 'lucide-react';
+
+// Lazy load components for better code splitting
+const Dashboard = lazy(() => import('./components/Dashboard'));
+const TransactionForm = lazy(() => import('./components/TransactionForm'));
+const TransferForm = lazy(() => import('./components/TransferForm'));
+const LendingTracker = lazy(() => import('./components/LendingTracker'));
+const FloatingAIChat = lazy(() => import('./components/AIChat'));
+const SalaryCalculator = lazy(() => import('./components/SalaryCalculator'));
+const Profile = lazy(() => import('./components/Profile'));
+const MonthlyBudget = lazy(() => import('./components/MonthlyBudget'));
+const GoalsTracker = lazy(() => import('./components/GoalsTracker'));
+const RecurringTransactions = lazy(() => import('./components/RecurringTransactions'));
+const FinancialInsights = lazy(() => import('./components/FinancialInsights'));
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -44,7 +46,10 @@ const App: React.FC = () => {
       setUser(currentUser);
       loadData(currentUser.id);
       // Load profile details (name, avatar) once token is present
-      fetchUserProfile().then(setUser).catch(() => handleLogout());
+      // Don't logout on failure - just use basic user info from token
+      fetchUserProfile().then(setUser).catch((err) => {
+        console.warn('Could not load profile details:', err);
+      });
     }
   }, []);
 
@@ -114,10 +119,9 @@ const App: React.FC = () => {
     <ToastContainer>
     <div className="min-h-screen bg-background text-slate-100">
       {/* Header */}
-      <header className="bg-slate-900/80 backdrop-blur-lg border-b border-slate-800 sticky top-0 z-50">
-        <div className="max-w-6xl mx-auto px-4">
-          <div className="flex items-center justify-between h-14">
-            {/* Logo */}
+      <header className="bg-slate-900/80 backdrop-blur-lg border-b border-slate-800 sticky top-0 z-50" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+        <div className="max-w-6xl mx-auto px-4" style={{ paddingLeft: 'max(1rem, env(safe-area-inset-left))', paddingRight: 'max(1rem, env(safe-area-inset-right))' }}>
+          <div className="flex items-center justify-between h-14">{/* Logo */}
             <button onClick={() => switchView(AppView.DASHBOARD)} className="flex items-center gap-2">
               <span className="text-xl">💰</span>
               <span className="font-semibold text-white hidden sm:block">ProsperPilot</span>
@@ -181,7 +185,12 @@ const App: React.FC = () => {
       </header>
 
       {/* Main Content */}
-      <main className="max-w-6xl mx-auto px-4 py-6 pb-24">
+      <main className="max-w-6xl mx-auto px-4 py-6 pb-24" style={{ paddingLeft: 'max(1rem, env(safe-area-inset-left))', paddingRight: 'max(1rem, env(safe-area-inset-right))', paddingBottom: 'max(6rem, env(safe-area-inset-bottom))' }}>
+        <Suspense fallback={
+          <div className="flex items-center justify-center py-20">
+            <Loader2 className="w-8 h-8 animate-spin text-teal-500" />
+          </div>
+        }>
         
         {/* VIEW: DASHBOARD */}
         <div className={`${view === AppView.DASHBOARD ? 'block' : 'hidden'}`}>
@@ -234,6 +243,7 @@ const App: React.FC = () => {
         {/* FLOATING AI CHAT (Always rendered, fixed position) */}
         <FloatingAIChat user={user} accounts={accounts} />
 
+        </Suspense>
       </main>
     </div>
   </ToastContainer>

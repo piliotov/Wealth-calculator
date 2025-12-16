@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Account, User } from '../types';
+import { Account, User, Currency } from '../types';
 import { Settings, Plus, Trash2, RefreshCw, Save, Image as ImageIcon, User as UserIcon } from 'lucide-react';
 import { createAccount, updateAccountBalance, deleteAccount, updateUserProfile } from '../services/api';
 import { useToast } from './ToastContainer';
@@ -26,7 +26,7 @@ const Profile: React.FC<Props> = ({ user, accounts, onUpdate, onUserChange }) =>
 
   // New Account State
   const [newAccName, setNewAccName] = useState('');
-  const [newAccCurrency, setNewAccCurrency] = useState<'EUR' | 'BGN' | 'USD'>('EUR');
+  const [newAccCurrency, setNewAccCurrency] = useState<Currency>('EUR');
   
   // Edit State
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -240,12 +240,14 @@ const Profile: React.FC<Props> = ({ user, accounts, onUpdate, onUserChange }) =>
                 <div className="flex gap-3">
                   <select 
                       value={newAccCurrency}
-                      onChange={(e) => setNewAccCurrency(e.target.value as any)}
+                      onChange={(e) => setNewAccCurrency(e.target.value as Currency)}
                       className="flex-1 h-12 bg-slate-800/50 border border-slate-600/50 rounded-lg px-3 text-white"
                   >
-                      <option value="EUR">EUR</option>
-                      <option value="BGN">BGN</option>
-                      <option value="USD">USD</option>
+                      <option value="EUR">EUR - Euro</option>
+                      <option value="USD">USD - US Dollar</option>
+                      <option value="BGN">BGN - Bulgarian Lev</option>
+                      <option value="RSD">RSD - Serbian Dinar</option>
+                      <option value="HUF">HUF - Hungarian Forint</option>
                   </select>
                   <button type="submit" className="h-12 px-6 bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white rounded-lg flex items-center gap-2 font-medium">
                       <Plus size={18} />

@@ -23,7 +23,7 @@ app.use(helmet({
       scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://cdn.tailwindcss.com"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://cdn.tailwindcss.com"],
       imgSrc: ["'self'", "data:", "https:", "http:"],
-      connectSrc: ["'self'", "https://generativelanguage.googleapis.com"],
+      connectSrc: ["'self'", "https://generativelanguage.googleapis.com", "https://api.exchangerate-api.com"],
       fontSrc: ["'self'", "data:"],
       objectSrc: ["'none'"],
       mediaSrc: ["'self'"],
@@ -416,8 +416,14 @@ app.delete('/api/transactions/:id', authenticateToken, (req, res) => {
 app.post('/api/transfers', authenticateToken, (req, res) => {
   const { fromAccountId, toAccountId, amount, description, fromCurrency, toCurrency } = req.body;
   
-  // Exchange rate conversion (simplified - you can improve this)
-  const RATES = { EUR: 1, BGN: 1.95583, USD: 1.1 };
+  // Exchange rate conversion - Updated to support more currencies
+  const RATES = { 
+    EUR: 1, 
+    BGN: 1.95583, 
+    USD: 1.08,
+    RSD: 117.25,  // Serbian Dinar
+    HUF: 395.50   // Hungarian Forint
+  };
   const amountInEUR = amount / RATES[fromCurrency];
   const convertedAmount = amountInEUR * RATES[toCurrency];
   

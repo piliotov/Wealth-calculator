@@ -1,11 +1,12 @@
 export type TransactionType = 'income' | 'expense';
+export type Currency = 'EUR' | 'USD' | 'BGN' | 'RSD' | 'HUF';
 
 export interface Account {
   id: string;
   userId: string;
   name: string;
   type: 'bank' | 'cash' | 'savings';
-  currency: 'EUR' | 'BGN' | 'USD';
+  currency: Currency;
   balance: number;
 }
 
@@ -16,7 +17,7 @@ export interface Transaction {
   type: TransactionType;
   category: string;
   amount: number; 
-  currency: 'EUR' | 'BGN' | 'USD';
+  currency: Currency;
   date: string; // ISO string
   description: string;
 }
@@ -36,10 +37,13 @@ export interface ChatMessage {
   timestamp: number;
 }
 
+// Legacy export - prefer using exchangeRates service for live rates
 export const EXCHANGE_RATES = {
   EUR: 1,
   BGN: 1.95583,
-  USD: 1.08
+  USD: 1.08,
+  RSD: 117.25,
+  HUF: 395.50
 };
 
 export enum AppView {

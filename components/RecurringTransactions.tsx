@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { RefreshCw, Plus, Trash2, Calendar, Play, Pause, Sparkles } from 'lucide-react';
 import { useToast } from './ToastContainer';
+import { Currency } from '../types';
 
 interface RecurringTransaction {
   id: string;
   description: string;
   amount: number;
   type: 'income' | 'expense';
-  currency: 'EUR' | 'BGN' | 'USD';
+  currency: Currency;
   frequency: 'daily' | 'weekly' | 'biweekly' | 'monthly' | 'yearly';
   category: string;
   nextDate: string;
@@ -213,12 +214,14 @@ const RecurringTransactions: React.FC<Props> = ({ userId, onTriggerTransaction }
               <label className="block text-xs text-slate-400 mb-1">Currency</label>
               <select
                 value={newTx.currency}
-                onChange={(e) => setNewTx({ ...newTx, currency: e.target.value as any })}
+                onChange={(e) => setNewTx({ ...newTx, currency: e.target.value as Currency })}
                 className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white"
               >
-                <option value="EUR">EUR</option>
-                <option value="BGN">BGN</option>
-                <option value="USD">USD</option>
+                <option value="EUR">EUR - Euro</option>
+                <option value="USD">USD - US Dollar</option>
+                <option value="BGN">BGN - Bulgarian Lev</option>
+                <option value="RSD">RSD - Serbian Dinar</option>
+                <option value="HUF">HUF - Hungarian Forint</option>
               </select>
             </div>
             <div>
