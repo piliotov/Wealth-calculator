@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { RefreshCw, Plus, Trash2, Calendar, Play, Pause, Sparkles } from 'lucide-react';
 import { useToast } from './ToastContainer';
 import { Currency } from '../types';
+import { fetchExchangeRates, getExchangeRates, toEUR, type ExchangeRates } from '../services/exchangeRates';
 
 interface RecurringTransaction {
   id: string;
@@ -30,6 +31,7 @@ const INCOME_CATEGORIES = ['Salary', 'Freelance', 'Investments', 'Rental Income'
 
 const RecurringTransactions: React.FC<Props> = ({ userId, onTriggerTransaction }) => {
   const [transactions, setTransactions] = useState<RecurringTransaction[]>([]);
+  const [rates, setRates] = useState<ExchangeRates>(getExchangeRates());
   const [showForm, setShowForm] = useState(false);
   const [newTx, setNewTx] = useState({
     description: '',
@@ -49,6 +51,11 @@ const RecurringTransactions: React.FC<Props> = ({ userId, onTriggerTransaction }
       setTransactions(JSON.parse(saved));
     }
   }, [userId]);
+
+  // Fetch exchange rates
+  useEffect(() => {
+    fetchExchangeRates().then(setRates).catch(console.warn);
+  }, []);
 
   // Save to localStorage
   const saveTx = (updated: RecurringTransaction[]) => {
@@ -132,7 +139,9 @@ const RecurringTransactions: React.FC<Props> = ({ userId, onTriggerTransaction }
           case 'biweekly': monthly = t.amount * 2; break;
           case 'yearly': monthly = t.amount / 12; break;
         }
-        return sum + monthly;
+        // Convert to EUR for consistent totals
+        const monthlyEUR = toEUR(monthly, t.currency as Currency, rates);
+        return sum + monthlyEUR;
       }, 0);
   };
 

@@ -1,6 +1,7 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { PieChart, TrendingUp, TrendingDown, Wallet, AlertTriangle, Sparkles, Target, ArrowUpRight, ArrowDownRight } from 'lucide-react';
-import { Account, Transaction } from '../types';
+import { Account, Transaction, Currency } from '../types';
+import { fetchExchangeRates, getExchangeRates, toEUR, type ExchangeRates } from '../services/exchangeRates';
 
 interface Props {
   accounts: Account[];
@@ -8,9 +9,17 @@ interface Props {
 }
 
 const FinancialInsights: React.FC<Props> = ({ accounts, transactions }) => {
+  const [rates, setRates] = useState<ExchangeRates>(getExchangeRates());
+
+  useEffect(() => {
+    fetchExchangeRates().then(setRates).catch(console.warn);
+  }, []);
+
   const insights = useMemo(() => {
-    // Total balances
-    const totalBalance = accounts.reduce((sum, acc) => sum + acc.balance, 0);
+    // Total balances (converted to EUR)
+    const totalBalance = accounts.reduce((sum, acc) => {
+      return sum + toEUR(acc.balance, acc.currency as Currency, rates);
+    }, 0);
     
     // Get last 30 days of transactions
     const thirtyDaysAgo = new Date();
@@ -21,20 +30,21 @@ const FinancialInsights: React.FC<Props> = ({ accounts, transactions }) => {
     // Calculate income and expenses
     const income = recentTx
       .filter(t => t.type === 'income')
-      .reduce((sum, t) => sum + t.amount, 0);
+      .reduce((sum, t) => sum + toEUR(t.amount, t.currency as Currency, rates), 0);
     
     const expenses = recentTx
       .filter(t => t.type === 'expense')
-      .reduce((sum, t) => sum + t.amount, 0);
+      .reduce((sum, t) => sum + toEUR(t.amount, t.currency as Currency, rates), 0);
     
     // Savings rate
     const savingsRate = income > 0 ? ((income - expenses) / income) * 100 : 0;
     
-    // Category breakdown
+    // Category breakdown (converted to EUR)
     const categoryBreakdown = recentTx
       .filter(t => t.type === 'expense')
       .reduce((acc, t) => {
-        acc[t.category] = (acc[t.category] || 0) + t.amount;
+        const amountEUR = toEUR(t.amount, t.currency as Currency, rates);
+        acc[t.category] = (acc[t.category] || 0) + amountEUR;
         return acc;
       }, {} as Record<string, number>);
     
@@ -64,23 +74,28 @@ const FinancialInsights: React.FC<Props> = ({ accounts, transactions }) => {
     
     const prevMonthExpenses = prevMonthTx
       .filter(t => t.type === 'expense')
-      .reduce((sum, t) => sum + t.amount, 0);
+      .reduce((sum, t) => sum + toEUR(t.amount, t.currency as Currency, rates), 0);
     
     const expenseChange = prevMonthExpenses > 0 
       ? ((expenses - prevMonthExpenses) / prevMonthExpenses) * 100 
       : 0;
     
-    // Find largest expense
+    // Find largest expense (sort by EUR equivalent)
     const largestExpense = recentTx
       .filter(t => t.type === 'expense')
-      .sort((a, b) => b.amount - a.amount)[0];
+      .sort((a, b) => toEUR(b.amount, b.currency as Currency, rates) - toEUR(a.amount, a.currency as Currency, rates))[0];
     
-    // Account health scores
-    const accountHealth = accounts.map(acc => ({
-      name: acc.name,
-      balance: acc.balance,
-      health: acc.balance > 1000 ? 'good' : acc.balance > 0 ? 'warning' : 'critical'
-    }));
+    // Account health scores (using EUR equivalent for health check)
+    const accountHealth = accounts.map(acc => {
+      const balanceEUR = toEUR(acc.balance, acc.currency as Currency, rates);
+      return {
+        name: acc.name,
+        balance: acc.balance,
+        currency: acc.currency,
+        balanceEUR,
+        health: balanceEUR > 1000 ? 'good' : balanceEUR > 0 ? 'warning' : 'critical'
+      };
+    });
     
     return {
       totalBalance,
@@ -95,10 +110,10 @@ const FinancialInsights: React.FC<Props> = ({ accounts, transactions }) => {
       accountHealth,
       transactionCount: recentTx.length,
     };
-  }, [accounts, transactions]);
+  }, [accounts, transactions, rates]);
 
-  const formatCurrency = (amount: number) =>
-    new Intl.NumberFormat('en-US', { style: 'currency', currency: 'EUR' }).format(amount);
+  const formatCurrency = (amount: number, currency: string = 'EUR') =>
+    new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(amount);
 
   const getCategoryEmoji = (category: string): string => {
     const emojis: Record<string, string> = {
@@ -261,7 +276,7 @@ const FinancialInsights: React.FC<Props> = ({ accounts, transactions }) => {
                 <span className="text-sm text-amber-400 font-medium">Largest Expense</span>
               </div>
               <p className="text-white">
-                <span className="font-semibold">{formatCurrency(insights.largestExpense.amount)}</span>
+                <span className="font-semibold">{formatCurrency(insights.largestExpense.amount, insights.largestExpense.currency)}</span>
                 <span className="text-slate-400"> on {insights.largestExpense.description} ({insights.largestExpense.category})</span>
               </p>
             </div>
@@ -276,7 +291,7 @@ const FinancialInsights: React.FC<Props> = ({ accounts, transactions }) => {
                   <div key={acc.name} className="flex items-center justify-between">
                     <span className="text-white">{acc.name}</span>
                     <div className="flex items-center gap-2">
-                      <span className="text-slate-400">{formatCurrency(acc.balance)}</span>
+                      <span className="text-slate-400">{formatCurrency(acc.balance, acc.currency)}</span>
                       <span className={`w-2 h-2 rounded-full ${
                         acc.health === 'good' ? 'bg-emerald-400' :
                         acc.health === 'warning' ? 'bg-amber-400' : 'bg-red-400'

@@ -23,7 +23,7 @@ app.use(helmet({
       scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://cdn.tailwindcss.com"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://cdn.tailwindcss.com"],
       imgSrc: ["'self'", "data:", "https:", "http:"],
-      connectSrc: ["'self'", "https://generativelanguage.googleapis.com", "https://api.exchangerate-api.com"],
+      connectSrc: ["'self'", "https://api.exchangerate-api.com"],
       fontSrc: ["'self'", "data:"],
       objectSrc: ["'none'"],
       mediaSrc: ["'self'"],
@@ -63,6 +63,11 @@ const authLimiter = rateLimit({
 
 app.use('/api/', limiter);
 
+// Generate unique user number (8 digits)
+function generateUserNumber() {
+  return Math.floor(10000000 + Math.random() * 90000000).toString();
+}
+
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'Server is running' });
@@ -96,8 +101,9 @@ app.post('/api/register', authLimiter, (req, res) => {
   
   const hash = bcrypt.hashSync(password, 10); // Increased from 8 to 10 rounds
   
-  const sql = 'INSERT INTO users (username, password_hash, full_name, avatar_url) VALUES (?, ?, NULL, NULL)';
-  db.run(sql, [username, hash], function(err) {
+  const sql = 'INSERT INTO users (username, password_hash, full_name, avatar_url, user_number) VALUES (?, ?, NULL, NULL, ?)';
+  const userNumber = generateUserNumber();
+  db.run(sql, [username, hash, userNumber], function(err) {
     if (err) return res.status(400).json({ error: 'User already exists' });
     
     // Create Default Accounts
@@ -110,7 +116,7 @@ app.post('/api/register', authLimiter, (req, res) => {
     db.run(accountsSql, [userId, userId, userId], (accErr) => {
         if(accErr) console.error("Error creating default accounts");
         const token = jwt.sign({ id: userId, username }, JWT_SECRET, { expiresIn: '7d' });
-        res.json({ token, user: { id: userId, username, fullName: null, avatarUrl: null } });
+        res.json({ token, user: { id: userId, username, fullName: null, avatarUrl: null, userNumber } });
     });
   });
 });
@@ -148,7 +154,8 @@ app.post('/api/login', authLimiter, (req, res) => {
         id: user.id, 
         username: user.username,
         fullName: user.full_name || null,
-        avatarUrl: user.avatar_url || null
+        avatarUrl: user.avatar_url || null,
+        userNumber: user.user_number || null
       } 
     });
   });
@@ -156,14 +163,30 @@ app.post('/api/login', authLimiter, (req, res) => {
 
 // --- User Profile ---
 app.get('/api/me', authenticateToken, (req, res) => {
-  db.get('SELECT id, username, full_name, avatar_url FROM users WHERE id = ?', [req.user.id], (err, user) => {
+  db.get('SELECT id, username, full_name, avatar_url, user_number FROM users WHERE id = ?', [req.user.id], (err, user) => {
     if (err || !user) return res.status(404).json({ error: 'User not found' });
-    res.json({
-      id: user.id,
-      username: user.username,
-      fullName: user.full_name || null,
-      avatarUrl: user.avatar_url || null
-    });
+    
+    // Generate user number if missing (for existing users)
+    if (!user.user_number) {
+      const newUserNumber = generateUserNumber();
+      db.run('UPDATE users SET user_number = ? WHERE id = ?', [newUserNumber, req.user.id], () => {
+        res.json({
+          id: user.id,
+          username: user.username,
+          fullName: user.full_name || null,
+          avatarUrl: user.avatar_url || null,
+          userNumber: newUserNumber
+        });
+      });
+    } else {
+      res.json({
+        id: user.id,
+        username: user.username,
+        fullName: user.full_name || null,
+        avatarUrl: user.avatar_url || null,
+        userNumber: user.user_number
+      });
+    }
   });
 });
 
@@ -450,93 +473,298 @@ app.post('/api/transfers', authenticateToken, (req, res) => {
   });
 });
 
-// --- AI Chat ---
-app.post('/api/chat', authenticateToken, async (req, res) => {
-  const { message } = req.body;
+// --- Friends ---
+// Search user by user number
+app.get('/api/users/search', authenticateToken, (req, res) => {
+  const { userNumber } = req.query;
+  if (!userNumber) return res.status(400).json({ error: 'User number required' });
   
-  try {
-    // Get user's accounts
-    const accounts = await new Promise((resolve, reject) => {
-      db.all('SELECT * FROM accounts WHERE user_id = ?', [req.user.id], (err, rows) => {
-        if (err) reject(err);
-        else resolve(rows);
+  db.get('SELECT id, username, full_name, user_number FROM users WHERE user_number = ? AND id != ?', 
+    [userNumber, req.user.id], (err, user) => {
+      if (err) return res.status(500).json({ error: err.message });
+      if (!user) return res.status(404).json({ error: 'User not found' });
+      res.json({
+        id: user.id,
+        username: user.username,
+        fullName: user.full_name,
+        userNumber: user.user_number
       });
     });
+});
 
-    // Get last 20 transactions
-    const transactions = await new Promise((resolve, reject) => {
-      db.all(
-        'SELECT * FROM transactions WHERE user_id = ? ORDER BY date DESC LIMIT 20',
-        [req.user.id],
-        (err, rows) => {
-          if (err) reject(err);
-          else resolve(rows);
-        }
-      );
+// Get friends list
+app.get('/api/friends', authenticateToken, (req, res) => {
+  const sql = `
+    SELECT f.id, f.user_id, f.friend_id, f.status, f.created_at,
+           u.username as friend_username, u.full_name as friend_full_name, u.user_number as friend_user_number
+    FROM friends f
+    JOIN users u ON (
+      CASE WHEN f.user_id = ? THEN f.friend_id ELSE f.user_id END = u.id
+    )
+    WHERE (f.user_id = ? OR f.friend_id = ?) AND f.status = 'accepted'
+  `;
+  
+  db.all(sql, [req.user.id, req.user.id, req.user.id], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    
+    // Calculate balance for each friend
+    const friendsWithBalance = rows.map(f => {
+      const friendId = f.user_id === req.user.id ? f.friend_id : f.user_id;
+      return {
+        id: f.id,
+        odUserId: req.user.id,
+        friendId: friendId,
+        friendUsername: f.friend_username,
+        friendFullName: f.friend_full_name,
+        friendUserNumber: f.friend_user_number,
+        status: f.status,
+        createdAt: f.created_at
+      };
     });
+    
+    res.json(friendsWithBalance);
+  });
+});
 
-    // Build prompt
-    const assetsSummary = accounts.map(a => 
-      `- ${a.name}: ${(a.balance || 0).toFixed(2)} ${a.currency}`
-    ).join('\n');
+// Get pending friend requests
+app.get('/api/friends/pending', authenticateToken, (req, res) => {
+  const sql = `
+    SELECT f.id, f.user_id, f.friend_id, f.status, f.created_at,
+           u.username as requester_username, u.full_name as requester_full_name, u.user_number as requester_user_number
+    FROM friends f
+    JOIN users u ON f.user_id = u.id
+    WHERE f.friend_id = ? AND f.status = 'pending'
+  `;
+  
+  db.all(sql, [req.user.id], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows.map(r => ({
+      id: r.id,
+      requesterId: r.user_id,
+      requesterUsername: r.requester_username,
+      requesterFullName: r.requester_full_name,
+      requesterUserNumber: r.requester_user_number,
+      status: r.status,
+      createdAt: r.created_at
+    })));
+  });
+});
 
-    const txSummary = transactions.map(t => 
-      `- ${t.date}: ${t.type.toUpperCase()} of ${(t.amount || 0).toFixed(2)} ${t.currency} for ${t.category} (${t.description || 'No description'})`
-    ).join('\n');
-
-    const prompt = `
-You are an expert Virtual CFO and financial advisor.
-
-Current Financial Snapshot (Assets):
-${assetsSummary || "No accounts found."}
-
-Recent Activity (Last 20 Transactions):
-${txSummary || "No transactions found."}
-
-User Question: "${message}"
-
-Instructions:
-1. Analyze the spending patterns AND the current account balances.
-2. If the user asks about affordability, check if they have enough balance in the relevant currency/account.
-3. Provide a concise, friendly, and actionable answer.
-4. Format the response with Markdown for readability.
-    `;
-
-    // Call Gemini via REST to avoid SDK/model version mismatches
-    const apiKey = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      return res.status(500).json({ error: 'Missing GOOGLE_API_KEY/GEMINI_API_KEY on the server' });
-    }
-
-    const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${apiKey}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }]}]
-      })
-    });
-
-    if (!resp.ok) {
-      const errBody = await resp.text();
-      console.error('Gemini HTTP error', resp.status, errBody);
-      return res.status(500).json({
-        error: 'Failed to generate AI response',
-        details: errBody
+// Send friend request
+app.post('/api/friends/request', authenticateToken, (req, res) => {
+  const { userNumber } = req.body;
+  
+  if (!userNumber) return res.status(400).json({ error: 'User number required' });
+  
+  // Find user by user number
+  db.get('SELECT id FROM users WHERE user_number = ?', [userNumber], (err, friend) => {
+    if (err) return res.status(500).json({ error: err.message });
+    if (!friend) return res.status(404).json({ error: 'User not found' });
+    if (friend.id === req.user.id) return res.status(400).json({ error: 'Cannot add yourself' });
+    
+    // Check if already friends or pending
+    db.get('SELECT * FROM friends WHERE (user_id = ? AND friend_id = ?) OR (user_id = ? AND friend_id = ?)',
+      [req.user.id, friend.id, friend.id, req.user.id], (checkErr, existing) => {
+        if (checkErr) return res.status(500).json({ error: checkErr.message });
+        if (existing) return res.status(400).json({ error: 'Friend request already exists or already friends' });
+        
+        // Create friend request
+        db.run('INSERT INTO friends (user_id, friend_id, status) VALUES (?, ?, ?)',
+          [req.user.id, friend.id, 'pending'], function(insertErr) {
+            if (insertErr) return res.status(500).json({ error: insertErr.message });
+            res.json({ success: true, id: this.lastID });
+          });
       });
-    }
+  });
+});
 
-    const data = await resp.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || 'No response from model';
-    res.json({ response: text });
-  } catch (error) {
-    console.error('AI Chat Error:', error);
-    console.error('Error details:', error.message);
-    res.status(500).json({ 
-      error: 'Failed to generate AI response', 
-      details: error.message,
-      hint: 'Check that your GOOGLE_API_KEY is valid and the Gemini API is enabled'
-    });
+// Accept/reject friend request
+app.put('/api/friends/:id', authenticateToken, (req, res) => {
+  const { status } = req.body; // 'accepted' or 'rejected'
+  
+  if (!['accepted', 'rejected'].includes(status)) {
+    return res.status(400).json({ error: 'Invalid status' });
   }
+  
+  db.run('UPDATE friends SET status = ? WHERE id = ? AND friend_id = ?',
+    [status, req.params.id, req.user.id], function(err) {
+      if (err) return res.status(500).json({ error: err.message });
+      if (this.changes === 0) return res.status(404).json({ error: 'Friend request not found' });
+      res.json({ success: true });
+    });
+});
+
+// Remove friend
+app.delete('/api/friends/:id', authenticateToken, (req, res) => {
+  db.run('DELETE FROM friends WHERE id = ? AND (user_id = ? OR friend_id = ?)',
+    [req.params.id, req.user.id, req.user.id], function(err) {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json({ success: true });
+    });
+});
+
+// --- Shared Expenses ---
+// Get shared expenses with a specific friend or all
+app.get('/api/shared-expenses', authenticateToken, (req, res) => {
+  const { friendId, settled } = req.query;
+  
+  let sql = `
+    SELECT se.*, 
+           uc.username as creator_username, uc.full_name as creator_full_name,
+           uf.username as friend_username, uf.full_name as friend_full_name
+    FROM shared_expenses se
+    JOIN users uc ON se.creator_id = uc.id
+    JOIN users uf ON se.friend_id = uf.id
+    WHERE (se.creator_id = ? OR se.friend_id = ?)
+  `;
+  const params = [req.user.id, req.user.id];
+  
+  if (friendId) {
+    sql += ' AND (se.creator_id = ? OR se.friend_id = ?)';
+    params.push(friendId, friendId);
+  }
+  
+  if (settled !== undefined) {
+    sql += ' AND se.settled = ?';
+    params.push(settled === 'true' ? 1 : 0);
+  }
+  
+  sql += ' ORDER BY se.created_at DESC';
+  
+  db.all(sql, params, (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows.map(r => ({
+      id: r.id,
+      creatorId: r.creator_id,
+      friendId: r.friend_id,
+      creatorUsername: r.creator_username,
+      creatorFullName: r.creator_full_name,
+      friendUsername: r.friend_username,
+      friendFullName: r.friend_full_name,
+      description: r.description,
+      totalAmount: r.total_amount,
+      currency: r.currency,
+      creatorPaid: r.creator_paid,
+      friendPaid: r.friend_paid,
+      splitType: r.split_type,
+      creatorShare: r.creator_share,
+      settled: r.settled === 1,
+      createdAt: r.created_at,
+      settledAt: r.settled_at,
+      linkedTransactionId: r.linked_transaction_id
+    })));
+  });
+});
+
+// Create shared expense
+app.post('/api/shared-expenses', authenticateToken, (req, res) => {
+  const { friendId, description, totalAmount, currency, creatorPaid, friendPaid, splitType, creatorShare, linkedTransactionId } = req.body;
+  
+  if (!friendId || !description || !totalAmount || !currency) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+  
+  // Verify friendship exists
+  db.get('SELECT * FROM friends WHERE ((user_id = ? AND friend_id = ?) OR (user_id = ? AND friend_id = ?)) AND status = ?',
+    [req.user.id, friendId, friendId, req.user.id, 'accepted'], (err, friendship) => {
+      if (err) return res.status(500).json({ error: err.message });
+      if (!friendship) return res.status(400).json({ error: 'Not friends with this user' });
+      
+      const sql = `INSERT INTO shared_expenses 
+        (creator_id, friend_id, description, total_amount, currency, creator_paid, friend_paid, split_type, creator_share, linked_transaction_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+      
+      db.run(sql, [
+        req.user.id, friendId, description, totalAmount, currency,
+        creatorPaid || 0, friendPaid || 0, splitType || 'equal', creatorShare || 50, linkedTransactionId || null
+      ], function(insertErr) {
+        if (insertErr) return res.status(500).json({ error: insertErr.message });
+        res.json({ success: true, id: this.lastID });
+      });
+    });
+});
+
+// Update shared expense (mark payment or settle)
+app.put('/api/shared-expenses/:id', authenticateToken, (req, res) => {
+  const { creatorPaid, friendPaid, settled } = req.body;
+  
+  // Verify ownership
+  db.get('SELECT * FROM shared_expenses WHERE id = ? AND (creator_id = ? OR friend_id = ?)',
+    [req.params.id, req.user.id, req.user.id], (err, expense) => {
+      if (err) return res.status(500).json({ error: err.message });
+      if (!expense) return res.status(404).json({ error: 'Shared expense not found' });
+      
+      const updates = [];
+      const params = [];
+      
+      if (creatorPaid !== undefined) {
+        updates.push('creator_paid = ?');
+        params.push(creatorPaid);
+      }
+      if (friendPaid !== undefined) {
+        updates.push('friend_paid = ?');
+        params.push(friendPaid);
+      }
+      if (settled !== undefined) {
+        updates.push('settled = ?');
+        params.push(settled ? 1 : 0);
+        if (settled) {
+          updates.push('settled_at = ?');
+          params.push(new Date().toISOString());
+        }
+      }
+      
+      if (updates.length === 0) return res.status(400).json({ error: 'No updates provided' });
+      
+      params.push(req.params.id);
+      
+      db.run(`UPDATE shared_expenses SET ${updates.join(', ')} WHERE id = ?`, params, function(updateErr) {
+        if (updateErr) return res.status(500).json({ error: updateErr.message });
+        res.json({ success: true });
+      });
+    });
+});
+
+// Delete shared expense
+app.delete('/api/shared-expenses/:id', authenticateToken, (req, res) => {
+  db.run('DELETE FROM shared_expenses WHERE id = ? AND creator_id = ?',
+    [req.params.id, req.user.id], function(err) {
+      if (err) return res.status(500).json({ error: err.message });
+      if (this.changes === 0) return res.status(404).json({ error: 'Shared expense not found or not authorized' });
+      res.json({ success: true });
+    });
+});
+
+// Get balance summary with all friends
+app.get('/api/shared-expenses/balances', authenticateToken, (req, res) => {
+  const sql = `
+    SELECT 
+      CASE WHEN se.creator_id = ? THEN se.friend_id ELSE se.creator_id END as other_user_id,
+      u.username as other_username,
+      u.full_name as other_full_name,
+      SUM(
+        CASE 
+          WHEN se.creator_id = ? THEN 
+            (se.creator_paid - (se.total_amount * se.creator_share / 100))
+          ELSE 
+            (se.friend_paid - (se.total_amount * (100 - se.creator_share) / 100))
+        END
+      ) as balance
+    FROM shared_expenses se
+    JOIN users u ON (CASE WHEN se.creator_id = ? THEN se.friend_id ELSE se.creator_id END = u.id)
+    WHERE (se.creator_id = ? OR se.friend_id = ?) AND se.settled = 0
+    GROUP BY other_user_id
+  `;
+  
+  db.all(sql, [req.user.id, req.user.id, req.user.id, req.user.id, req.user.id], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows.map(r => ({
+      friendId: r.other_user_id,
+      friendUsername: r.other_username,
+      friendFullName: r.other_full_name,
+      balance: r.balance // Positive = they owe you, Negative = you owe them
+    })));
+  });
 });
 
 // Serve static files from the React app (must be after API routes)

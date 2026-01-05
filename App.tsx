@@ -3,20 +3,20 @@ import Auth from './components/Auth';
 import { ToastContainer } from './components/ToastContainer';
 import { getCurrentUser, logoutUser, getTransactions, addTransaction, getAccounts, transferMoney, fetchUserProfile } from './services/api';
 import { User, Transaction, Account, AppView } from './types';
-import { LayoutDashboard, LogOut, Calculator, User as UserIcon, PiggyBank, Target, RefreshCw, PieChart, Menu, X, Loader2 } from 'lucide-react';
+import { LayoutDashboard, LogOut, Calculator, User as UserIcon, PiggyBank, Target, RefreshCw, PieChart, Menu, X, Loader2, Users } from 'lucide-react';
 
 // Lazy load components for better code splitting
 const Dashboard = lazy(() => import('./components/Dashboard'));
 const TransactionForm = lazy(() => import('./components/TransactionForm'));
 const TransferForm = lazy(() => import('./components/TransferForm'));
 const LendingTracker = lazy(() => import('./components/LendingTracker'));
-const FloatingAIChat = lazy(() => import('./components/AIChat'));
 const SalaryCalculator = lazy(() => import('./components/SalaryCalculator'));
 const Profile = lazy(() => import('./components/Profile'));
 const MonthlyBudget = lazy(() => import('./components/MonthlyBudget'));
 const GoalsTracker = lazy(() => import('./components/GoalsTracker'));
 const RecurringTransactions = lazy(() => import('./components/RecurringTransactions'));
 const FinancialInsights = lazy(() => import('./components/FinancialInsights'));
+const SharedExpenses = lazy(() => import('./components/SharedExpenses'));
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -30,6 +30,7 @@ const App: React.FC = () => {
     { view: AppView.DASHBOARD, label: 'Home', icon: LayoutDashboard },
     { view: AppView.BUDGET, label: 'Budget', icon: PiggyBank },
     { view: AppView.GOALS, label: 'Goals', icon: Target },
+    { view: AppView.SHARED_EXPENSES, label: 'Split', icon: Users },
     { view: AppView.RECURRING, label: 'Bills', icon: RefreshCw },
     { view: AppView.INSIGHTS, label: 'Insights', icon: PieChart },
     { view: AppView.CALCULATOR, label: 'Salary', icon: Calculator },
@@ -51,6 +52,14 @@ const App: React.FC = () => {
         console.warn('Could not load profile details:', err);
       });
     }
+    
+    // Listen for auth expiration (403/401 from API)
+    const handleAuthExpired = () => {
+      logoutUser();
+      setUser(null);
+    };
+    window.addEventListener('auth-expired', handleAuthExpired);
+    return () => window.removeEventListener('auth-expired', handleAuthExpired);
   }, []);
 
   const loadData = async (userId: string) => {
@@ -93,7 +102,7 @@ const App: React.FC = () => {
   };
 
   // Nav Button Component
-  const NavBtn = ({ target, icon: Icon, label }: { target: AppView, icon: any, label: string }) => (
+  const NavBtn: React.FC<{ target: AppView; icon: any; label: string }> = ({ target, icon: Icon, label }) => (
     <button
       onClick={() => switchView(target)}
       className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
@@ -235,13 +244,15 @@ const App: React.FC = () => {
             <FinancialInsights accounts={accounts} transactions={transactions} />
         </div>
 
+        {/* VIEW: SHARED EXPENSES */}
+        <div className={view === AppView.SHARED_EXPENSES ? 'block' : 'hidden'}>
+            <SharedExpenses currentUser={user} onUpdate={() => setRefreshKey(k => k + 1)} />
+        </div>
+
         {/* VIEW: PROFILE */}
         <div className={view === AppView.PROFILE ? 'block' : 'hidden'}>
           <Profile user={user} accounts={accounts} onUpdate={() => setRefreshKey(k => k + 1)} onUserChange={handleUserUpdated} />
         </div>
-
-        {/* FLOATING AI CHAT (Always rendered, fixed position) */}
-        <FloatingAIChat user={user} accounts={accounts} />
 
         </Suspense>
       </main>

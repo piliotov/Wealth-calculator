@@ -1,11 +1,10 @@
-import { Transaction, User, Account, ChatMessage, EXCHANGE_RATES } from '../types';
+import { Transaction, User, Account, EXCHANGE_RATES } from '../types';
 
 // Keys for LocalStorage
 const USERS_KEY = 'wt_users';
 const TRANSACTIONS_KEY = 'wt_transactions';
 const ACCOUNTS_KEY = 'wt_accounts';
 const SESSION_KEY = 'wt_session';
-const CHAT_KEY = 'wt_chat_history';
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -185,17 +184,4 @@ export const getLast30DaysTransactions = async (userId: string): Promise<Transac
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
   return all.filter(t => new Date(t.date) >= thirtyDaysAgo);
-};
-
-// --- Chat Persistence ---
-
-export const getChatHistory = async (userId: string): Promise<ChatMessage[]> => {
-  const history = JSON.parse(localStorage.getItem(CHAT_KEY) || '{}');
-  return history[userId] || [];
-};
-
-export const saveChatHistory = async (userId: string, messages: ChatMessage[]): Promise<void> => {
-  const history = JSON.parse(localStorage.getItem(CHAT_KEY) || '{}');
-  history[userId] = messages;
-  localStorage.setItem(CHAT_KEY, JSON.stringify(history));
 };

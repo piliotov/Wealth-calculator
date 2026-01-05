@@ -28,13 +28,38 @@ export interface User {
   passwordHash?: string;
   fullName?: string | null;
   avatarUrl?: string | null;
+  userNumber?: string | null;
 }
 
-export interface ChatMessage {
+export interface Friend {
   id: string;
-  role: 'user' | 'assistant';
-  text: string;
-  timestamp: number;
+  odUserId: string;
+  friendId: string;
+  friendUsername: string;
+  friendFullName?: string | null;
+  friendUserNumber: string;
+  status: 'pending' | 'accepted' | 'rejected';
+  createdAt: string;
+  balance?: number; // How much the friend owes you (positive) or you owe them (negative)
+}
+
+export interface SharedExpense {
+  id: string;
+  creatorId: string;
+  friendId: string;
+  friendUsername?: string;
+  friendFullName?: string | null;
+  description: string;
+  totalAmount: number;
+  currency: Currency;
+  creatorPaid: number;
+  friendPaid: number;
+  splitType: 'equal' | 'custom' | 'full';
+  creatorShare: number; // Percentage (0-100)
+  settled: boolean;
+  createdAt: string;
+  settledAt?: string | null;
+  linkedTransactionId?: string | null;
 }
 
 // Legacy export - prefer using exchangeRates service for live rates
@@ -54,5 +79,6 @@ export enum AppView {
   PROFILE = 'PROFILE',
   GOALS = 'GOALS',
   RECURRING = 'RECURRING',
-  INSIGHTS = 'INSIGHTS'
+  INSIGHTS = 'INSIGHTS',
+  SHARED_EXPENSES = 'SHARED_EXPENSES'
 }

@@ -1,4 +1,4 @@
-import { Transaction, User, Account } from '../types';
+import { Transaction, User, Account, Friend, SharedExpense } from '../types';
 
 const API_URL = '/api';
 
@@ -8,6 +8,16 @@ const getHeaders = () => ({
   'Content-Type': 'application/json',
   ...(authToken && { 'Authorization': `Bearer ${authToken}` })
 });
+
+// Handle 401/403 by clearing invalid token and forcing re-login
+const handleAuthError = (status: number) => {
+  if (status === 401 || status === 403) {
+    authToken = null;
+    localStorage.removeItem('auth_token');
+    // Dispatch a custom event so App.tsx can redirect to login
+    window.dispatchEvent(new CustomEvent('auth-expired'));
+  }
+};
 
 // --- Auth Services ---
 
@@ -83,6 +93,7 @@ export const fetchUserProfile = async (): Promise<User> => {
   });
 
   if (!response.ok) {
+    handleAuthError(response.status);
     throw new Error('Failed to load profile');
   }
 
@@ -174,7 +185,10 @@ export const getTransactions = async (): Promise<Transaction[]> => {
     headers: getHeaders()
   });
 
-  if (!response.ok) throw new Error('Failed to fetch transactions');
+  if (!response.ok) {
+    handleAuthError(response.status);
+    throw new Error('Failed to fetch transactions');
+  }
   return response.json();
 };
 
@@ -212,35 +226,6 @@ export const getLast30DaysTransactions = async (): Promise<Transaction[]> => {
   return all.filter(t => new Date(t.date) >= thirtyDaysAgo);
 };
 
-// --- Chat AI ---
-
-export const sendChatMessage = async (message: string): Promise<string> => {
-  const response = await fetch(`${API_URL}/chat`, {
-    method: 'POST',
-    headers: getHeaders(),
-    body: JSON.stringify({ message })
-  });
-
-  // Read body once and parse safely
-  const raw = await response.text();
-  let parsed: any = null;
-  try {
-    parsed = raw ? JSON.parse(raw) : null;
-  } catch {
-    // Non-JSON response (e.g., HTML error); keep raw text for debugging
-  }
-
-  if (!response.ok) {
-    const msg = parsed?.error || parsed?.message || raw || 'AI chat failed';
-    throw new Error(msg);
-  }
-
-  const answer = parsed?.response;
-  if (typeof answer === 'string') return answer;
-  // Fallback if model responds with unexpected shape
-  return parsed?.candidates?.[0]?.content?.parts?.[0]?.text || 'No response from AI';
-};
-
 // --- Transfers ---
 
 export const transferMoney = async (data: {
@@ -259,4 +244,166 @@ export const transferMoney = async (data: {
   });
 
   if (!response.ok) throw new Error('Failed to transfer money');
+};
+
+// --- Friends Services ---
+
+export const searchUserByNumber = async (userNumber: string): Promise<{ id: string; username: string; fullName: string | null; userNumber: string }> => {
+  const response = await fetch(`${API_URL}/users/search?userNumber=${encodeURIComponent(userNumber)}`, {
+    headers: getHeaders()
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'User not found' }));
+    throw new Error(error.error || 'User not found');
+  }
+  return response.json();
+};
+
+export const getFriends = async (): Promise<Friend[]> => {
+  const response = await fetch(`${API_URL}/friends`, {
+    headers: getHeaders()
+  });
+
+  if (!response.ok) {
+    console.error('Failed to fetch friends:', response.status);
+    return [];
+  }
+  return response.json();
+};
+
+export const getPendingFriendRequests = async (): Promise<Array<{
+  id: string;
+  requesterId: string;
+  requesterUsername: string;
+  requesterFullName: string | null;
+  requesterUserNumber: string;
+  status: string;
+  createdAt: string;
+}>> => {
+  const response = await fetch(`${API_URL}/friends/pending`, {
+    headers: getHeaders()
+  });
+
+  if (!response.ok) {
+    console.error('Failed to fetch pending requests:', response.status);
+    return [];
+  }
+  return response.json();
+};
+
+export const sendFriendRequest = async (userNumber: string): Promise<{ success: boolean; id: number }> => {
+  const response = await fetch(`${API_URL}/friends/request`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({ userNumber })
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Failed to send request' }));
+    throw new Error(error.error || 'Failed to send friend request');
+  }
+  return response.json();
+};
+
+export const respondToFriendRequest = async (requestId: string, status: 'accepted' | 'rejected'): Promise<void> => {
+  const response = await fetch(`${API_URL}/friends/${requestId}`, {
+    method: 'PUT',
+    headers: getHeaders(),
+    body: JSON.stringify({ status })
+  });
+
+  if (!response.ok) throw new Error('Failed to respond to friend request');
+};
+
+export const removeFriend = async (friendshipId: string): Promise<void> => {
+  const response = await fetch(`${API_URL}/friends/${friendshipId}`, {
+    method: 'DELETE',
+    headers: getHeaders()
+  });
+
+  if (!response.ok) throw new Error('Failed to remove friend');
+};
+
+// --- Shared Expenses Services ---
+
+export const getSharedExpenses = async (options?: { friendId?: string; settled?: boolean }): Promise<SharedExpense[]> => {
+  const params = new URLSearchParams();
+  if (options?.friendId) params.set('friendId', options.friendId);
+  if (options?.settled !== undefined) params.set('settled', String(options.settled));
+  
+  const url = `${API_URL}/shared-expenses${params.toString() ? '?' + params.toString() : ''}`;
+  const response = await fetch(url, {
+    headers: getHeaders()
+  });
+
+  if (!response.ok) {
+    console.error('Failed to fetch shared expenses:', response.status);
+    return [];
+  }
+  return response.json();
+};
+
+export const createSharedExpense = async (data: {
+  friendId: string;
+  description: string;
+  totalAmount: number;
+  currency: string;
+  creatorPaid: number;
+  friendPaid: number;
+  splitType: 'equal' | 'custom' | 'full';
+  creatorShare: number;
+  linkedTransactionId?: string;
+}): Promise<{ success: boolean; id: number }> => {
+  const response = await fetch(`${API_URL}/shared-expenses`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify(data)
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Failed to create shared expense' }));
+    throw new Error(error.error || 'Failed to create shared expense');
+  }
+  return response.json();
+};
+
+export const updateSharedExpense = async (expenseId: string, data: {
+  creatorPaid?: number;
+  friendPaid?: number;
+  settled?: boolean;
+}): Promise<void> => {
+  const response = await fetch(`${API_URL}/shared-expenses/${expenseId}`, {
+    method: 'PUT',
+    headers: getHeaders(),
+    body: JSON.stringify(data)
+  });
+
+  if (!response.ok) throw new Error('Failed to update shared expense');
+};
+
+export const deleteSharedExpense = async (expenseId: string): Promise<void> => {
+  const response = await fetch(`${API_URL}/shared-expenses/${expenseId}`, {
+    method: 'DELETE',
+    headers: getHeaders()
+  });
+
+  if (!response.ok) throw new Error('Failed to delete shared expense');
+};
+
+export const getSharedExpenseBalances = async (): Promise<Array<{
+  friendId: string;
+  friendUsername: string;
+  friendFullName: string | null;
+  balance: number;
+}>> => {
+  const response = await fetch(`${API_URL}/shared-expenses/balances`, {
+    headers: getHeaders()
+  });
+
+  if (!response.ok) {
+    console.error('Failed to fetch balances:', response.status);
+    return [];
+  }
+  return response.json();
 };
