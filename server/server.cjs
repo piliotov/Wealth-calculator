@@ -382,30 +382,33 @@ app.post('/api/transactions', authenticateToken, (req, res) => {
 
 app.put('/api/transactions/:id', authenticateToken, (req, res) => {
   const { accountId, type, category, amount, currency, date, description } = req.body;
+  const newAccountId = parseInt(accountId, 10);
+  const newAmount = parseFloat(amount);
   
   // First, get the old transaction to revert its balance effect
   db.get('SELECT * FROM transactions WHERE id = ? AND user_id = ?', [req.params.id, req.user.id], (err, oldTx) => {
     if (err || !oldTx) return res.status(404).json({ error: 'Transaction not found' });
     
-    // Revert old balance
+    // Step 1: Revert old balance from old account
     const revertSql = oldTx.type === 'income'
       ? 'UPDATE accounts SET balance = balance - ? WHERE id = ?'
       : 'UPDATE accounts SET balance = balance + ? WHERE id = ?';
     
     db.run(revertSql, [oldTx.amount, oldTx.account_id], (revertErr) => {
-      if (revertErr) return res.status(500).json({ error: revertErr.message });
+      if (revertErr) return res.status(500).json({ error: 'Failed to revert old balance: ' + revertErr.message });
       
-      // Update transaction
+      // Step 2: Update transaction record
       const updateSql = `UPDATE transactions SET account_id = ?, type = ?, category = ?, amount = ?, currency = ?, date = ?, description = ? WHERE id = ? AND user_id = ?`;
-      db.run(updateSql, [accountId, type, category, amount, currency, date, description, req.params.id, req.user.id], function(updateErr) {
-        if (updateErr) return res.status(500).json({ error: updateErr.message });
+      db.run(updateSql, [newAccountId, type, category, newAmount, currency, date, description, req.params.id, req.user.id], function(updateErr) {
+        if (updateErr) return res.status(500).json({ error: 'Failed to update transaction: ' + updateErr.message });
         
-        // Apply new balance
+        // Step 3: Apply new balance to account (use new accountId and new amount)
         const applySql = type === 'income'
           ? 'UPDATE accounts SET balance = balance + ? WHERE id = ?'
           : 'UPDATE accounts SET balance = balance - ? WHERE id = ?';
         
-        db.run(applySql, [amount, accountId], (applyErr) => {
+        db.run(applySql, [newAmount, newAccountId], (applyErr) => {
+          if (applyErr) return res.status(500).json({ error: 'Failed to apply new balance: ' + applyErr.message });
           res.json({ success: true, id: req.params.id });
         });
       });

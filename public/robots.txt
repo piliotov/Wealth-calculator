@@ -1,0 +1,9 @@
+# robots.txt for ProsperPilot
+User-agent: *
+Allow: /
+
+# Sitemap location
+Sitemap: https://wealth-tracker-tau.vercel.app/sitemap.xml
+
+# Disallow API routes from indexing
+Disallow: /api/
