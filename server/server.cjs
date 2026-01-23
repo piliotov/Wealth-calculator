@@ -410,6 +410,21 @@ app.put('/api/transactions/:id', authenticateToken, (req, res) => {
         db.run(applySql, [newAmount, newAccountId], (applyErr) => {
           if (applyErr) return res.status(500).json({ error: 'Failed to apply new balance: ' + applyErr.message });
           res.json({ success: true, id: req.params.id });
+
+          // Check for linked shared expense and update it
+          db.get('SELECT * FROM shared_expenses WHERE linked_transaction_id = ?', [req.params.id], (err, sharedExpense) => {
+            if (sharedExpense) {
+              const isCreator = sharedExpense.creator_id === req.user.id;
+              
+              if (isCreator) {
+                  db.run('UPDATE shared_expenses SET total_amount = ?, creator_paid = ? WHERE id = ?', 
+                      [amount, amount, sharedExpense.id]);
+              } else {
+                  db.run('UPDATE shared_expenses SET total_amount = ?, friend_paid = ? WHERE id = ?', 
+                      [amount, amount, sharedExpense.id]);
+              }
+            }
+          });
         });
       });
     });
