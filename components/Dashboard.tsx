@@ -194,8 +194,8 @@ const Dashboard: React.FC<Props> = ({ transactions, accounts, onUpdate }) => {
             <TrendingUp className="w-4 h-4 text-teal-500" />
             Balance History
           </h3>
-          <div style={{ width: '100%', height: 200 }}>
-            <ResponsiveContainer width="100%" height="100%">
+          <div style={{ width: '100%', height: 200, minWidth: 200, minHeight: 200 }}>
+            <ResponsiveContainer width="100%" height="100%" minWidth={200} minHeight={200}>
               <AreaChart data={stats.chartData}>
                 <defs>
                   <linearGradient id="colorBalance" x1="0" y1="0" x2="0" y2="1">
@@ -221,9 +221,9 @@ const Dashboard: React.FC<Props> = ({ transactions, accounts, onUpdate }) => {
         {/* Income */}
         <div className="bg-slate-800/40 p-4 rounded-xl border border-slate-700/50">
           <h3 className="text-sm font-medium text-slate-300 mb-2">Income Sources</h3>
-          <div style={{ width: '100%', height: 160 }} className="flex items-center justify-center">
+          <div style={{ width: '100%', height: 160, minWidth: 150, minHeight: 160 }} className="flex items-center justify-center">
             {stats.incomePieData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minWidth={150} minHeight={160}>
                 <PieChart>
                   <Pie
                     data={stats.incomePieData}
@@ -264,9 +264,9 @@ const Dashboard: React.FC<Props> = ({ transactions, accounts, onUpdate }) => {
         {/* Expenses */}
         <div className="bg-slate-800/40 p-4 rounded-xl border border-slate-700/50">
           <h3 className="text-sm font-medium text-slate-300 mb-2">Expense Breakdown</h3>
-          <div style={{ width: '100%', height: 160 }} className="flex items-center justify-center">
+          <div style={{ width: '100%', height: 160, minWidth: 150, minHeight: 160 }} className="flex items-center justify-center">
             {stats.pieData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minWidth={150} minHeight={160}>
                 <PieChart>
                   <Pie
                     data={stats.pieData}
