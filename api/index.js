@@ -327,7 +327,8 @@ export default async function handler(req, res) {
         
         // Calculate new balance - if same account, use reverted balance; otherwise fetch fresh
         let currentBalance;
-        if (newAccountId === oldTx.account_id) {
+        const oldAccountId = parseInt(oldTx.account_id, 10);
+        if (newAccountId === oldAccountId) {
           // Same account - use the reverted balance we just set
           currentBalance = revertedBalance;
         } else {
