@@ -334,6 +334,12 @@ export default async function handler(req, res) {
           const { error: revertError } = await db.from('accounts').update({ balance: revertedBalance }).eq('id', oldTx.account_id);
           if (revertError) return res.status(500).json({ error: 'Failed to revert account balance', details: revertError.message });
           
+          // Verify new account exists before updating transaction
+          const { data: verifyAccount, error: verifyError } = await db.from('accounts').select('id').eq('id', newAccountId).eq('user_id', authUser.id).single();
+          if (verifyError || !verifyAccount) {
+             return res.status(400).json({ error: 'Target account does not exist or does not belong to user', details: verifyError ? verifyError.message : 'Account not found' });
+          }
+
           // Update transaction record
           const { error: updateError } = await db.from('transactions').update({ account_id: newAccountId, type, category, amount: newAmount, currency, date, description }).eq('id', txId).eq('user_id', authUser.id);
           if (updateError) return res.status(500).json({ error: 'Failed to update transaction record', details: updateError.message });
