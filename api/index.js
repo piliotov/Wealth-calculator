@@ -320,8 +320,8 @@ export default async function handler(req, res) {
         // Update transaction
         await db.from('transactions').update({ account_id: newAccountId, type, category, amount: newAmount, currency, date, description }).eq('id', txId).eq('user_id', authUser.id);
         
-        // Apply new balance
-        const { data: newAccount } = await db.from('accounts').select('balance').eq('id', newAccountId).single();
+        // Apply new balance (fetch fresh balance in case account changed)
+        const { data: newAccount } = await db.from('accounts').select('balance').eq('id', newAccountId).eq('user_id', authUser.id).single();
         const newBalance = type === 'income' ? newAccount.balance + newAmount : newAccount.balance - newAmount;
         await db.from('accounts').update({ balance: newBalance }).eq('id', newAccountId);
         

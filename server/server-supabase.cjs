@@ -560,11 +560,12 @@ app.put('/api/transactions/:id', authenticateToken, async (req, res) => {
     
     if (updateError) throw updateError;
     
-    // Apply new balance to new account
+    // Apply new balance to new account (get fresh balance in case account changed)
     const { data: newAccount } = await supabase
       .from('accounts')
       .select('balance')
       .eq('id', newAccountId)
+      .eq('user_id', req.user.id)
       .single();
     
     const newBalance = type === 'income' 
