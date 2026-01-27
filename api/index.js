@@ -304,46 +304,64 @@ export default async function handler(req, res) {
       const txId = txMatch[1];
       
       if (method === 'PUT') {
-        const { accountId, type, category, amount, currency, date, description } = req.body;
-        const newAccountId = parseInt(accountId, 10);
-        const newAmount = parseFloat(amount);
-        
-        // Get old transaction
-        const { data: oldTx, error: oldTxError } = await db.from('transactions').select('*').eq('id', txId).eq('user_id', authUser.id).single();
-        if (oldTxError || !oldTx) return res.status(404).json({ error: 'Transaction not found' });
-        
-        // Get old account balance
-        const { data: oldAccount, error: oldAccError } = await db.from('accounts').select('balance').eq('id', oldTx.account_id).eq('user_id', authUser.id).single();
-        if (oldAccError || !oldAccount) return res.status(404).json({ error: 'Original account not found' });
-        
-        // Calculate and apply reverted balance
-        const revertedBalance = oldTx.type === 'income' ? oldAccount.balance - oldTx.amount : oldAccount.balance + oldTx.amount;
-        const { error: revertError } = await db.from('accounts').update({ balance: revertedBalance }).eq('id', oldTx.account_id);
-        if (revertError) return res.status(500).json({ error: 'Failed to revert account balance' });
-        
-        // Update transaction record
-        const { error: updateError } = await db.from('transactions').update({ account_id: newAccountId, type, category, amount: newAmount, currency, date, description }).eq('id', txId).eq('user_id', authUser.id);
-        if (updateError) return res.status(500).json({ error: 'Failed to update transaction record' });
-        
-        // Calculate new balance - if same account, use reverted balance; otherwise fetch fresh
-        let currentBalance;
-        const oldAccountId = parseInt(oldTx.account_id, 10);
-        if (newAccountId === oldAccountId) {
-          // Same account - use the reverted balance we just set
-          currentBalance = revertedBalance;
-        } else {
-          // Different account - fetch its current balance
-          const { data: newAccount, error: newAccError } = await db.from('accounts').select('balance').eq('id', newAccountId).eq('user_id', authUser.id).single();
-          if (newAccError || !newAccount) return res.status(404).json({ error: 'New account not found' });
-          currentBalance = newAccount.balance;
+        try {
+          const { accountId, type, category, amount, currency, date, description } = req.body;
+          
+          // Validate input
+          if (!accountId || !type || !category || amount === undefined || !currency || !date) {
+            return res.status(400).json({ error: 'Missing required fields', received: { accountId, type, category, amount, currency, date } });
+          }
+          
+          const newAccountId = parseInt(accountId, 10);
+          const newAmount = parseFloat(amount);
+          
+          if (isNaN(newAccountId) || isNaN(newAmount)) {
+            return res.status(400).json({ error: 'Invalid accountId or amount', accountId, amount });
+          }
+          
+          // Get old transaction
+          const { data: oldTx, error: oldTxError } = await db.from('transactions').select('*').eq('id', txId).eq('user_id', authUser.id).single();
+          if (oldTxError) return res.status(404).json({ error: 'Transaction not found', details: oldTxError.message });
+          if (!oldTx) return res.status(404).json({ error: 'Transaction not found' });
+          
+          // Get old account balance
+          const { data: oldAccount, error: oldAccError } = await db.from('accounts').select('balance').eq('id', oldTx.account_id).eq('user_id', authUser.id).single();
+          if (oldAccError) return res.status(404).json({ error: 'Original account not found', details: oldAccError.message });
+          if (!oldAccount) return res.status(404).json({ error: 'Original account not found' });
+          
+          // Calculate and apply reverted balance
+          const revertedBalance = oldTx.type === 'income' ? oldAccount.balance - oldTx.amount : oldAccount.balance + oldTx.amount;
+          const { error: revertError } = await db.from('accounts').update({ balance: revertedBalance }).eq('id', oldTx.account_id);
+          if (revertError) return res.status(500).json({ error: 'Failed to revert account balance', details: revertError.message });
+          
+          // Update transaction record
+          const { error: updateError } = await db.from('transactions').update({ account_id: newAccountId, type, category, amount: newAmount, currency, date, description }).eq('id', txId).eq('user_id', authUser.id);
+          if (updateError) return res.status(500).json({ error: 'Failed to update transaction record', details: updateError.message });
+          
+          // Calculate new balance - if same account, use reverted balance; otherwise fetch fresh
+          let currentBalance;
+          const oldAccountId = Number(oldTx.account_id);
+          if (newAccountId === oldAccountId) {
+            // Same account - use the reverted balance we just set
+            currentBalance = revertedBalance;
+          } else {
+            // Different account - fetch its current balance
+            const { data: newAccount, error: newAccError } = await db.from('accounts').select('balance').eq('id', newAccountId).eq('user_id', authUser.id).single();
+            if (newAccError) return res.status(404).json({ error: 'New account not found', details: newAccError.message });
+            if (!newAccount) return res.status(404).json({ error: 'New account not found' });
+            currentBalance = newAccount.balance;
+          }
+          
+          // Apply new transaction amount to account
+          const newBalance = type === 'income' ? currentBalance + newAmount : currentBalance - newAmount;
+          const { error: applyError } = await db.from('accounts').update({ balance: newBalance }).eq('id', newAccountId);
+          if (applyError) return res.status(500).json({ error: 'Failed to apply new balance', details: applyError.message });
+          
+          return res.json({ success: true, id: txId });
+        } catch (putError) {
+          console.error('PUT transaction error:', putError);
+          return res.status(500).json({ error: 'Transaction update failed', details: putError.message });
         }
-        
-        // Apply new transaction amount to account
-        const newBalance = type === 'income' ? currentBalance + newAmount : currentBalance - newAmount;
-        const { error: applyError } = await db.from('accounts').update({ balance: newBalance }).eq('id', newAccountId);
-        if (applyError) return res.status(500).json({ error: 'Failed to apply new balance' });
-        
-        return res.json({ success: true, id: txId });
       }
       
       if (method === 'DELETE') {
