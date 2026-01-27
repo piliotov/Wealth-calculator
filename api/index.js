@@ -309,19 +309,24 @@ export default async function handler(req, res) {
         const newAmount = parseFloat(amount);
         
         // Get old transaction
-        const { data: oldTx } = await db.from('transactions').select('*').eq('id', txId).eq('user_id', authUser.id).single();
-        if (!oldTx) return res.status(404).json({ error: 'Transaction not found' });
+        const { data: oldTx, error: oldTxError } = await db.from('transactions').select('*').eq('id', txId).eq('user_id', authUser.id).single();
+        if (oldTxError || !oldTx) return res.status(404).json({ error: 'Transaction not found' });
         
         // Revert old balance
-        const { data: oldAccount } = await db.from('accounts').select('balance').eq('id', oldTx.account_id).single();
+        const { data: oldAccount, error: oldAccError } = await db.from('accounts').select('balance').eq('id', oldTx.account_id).eq('user_id', authUser.id).single();
+        if (oldAccError || !oldAccount) return res.status(404).json({ error: 'Original account not found' });
+        
         const revertedBalance = oldTx.type === 'income' ? oldAccount.balance - oldTx.amount : oldAccount.balance + oldTx.amount;
         await db.from('accounts').update({ balance: revertedBalance }).eq('id', oldTx.account_id);
         
         // Update transaction
-        await db.from('transactions').update({ account_id: newAccountId, type, category, amount: newAmount, currency, date, description }).eq('id', txId).eq('user_id', authUser.id);
+        const { error: updateError } = await db.from('transactions').update({ account_id: newAccountId, type, category, amount: newAmount, currency, date, description }).eq('id', txId).eq('user_id', authUser.id);
+        if (updateError) return res.status(500).json({ error: 'Failed to update transaction record' });
         
         // Apply new balance (fetch fresh balance in case account changed)
-        const { data: newAccount } = await db.from('accounts').select('balance').eq('id', newAccountId).eq('user_id', authUser.id).single();
+        const { data: newAccount, error: newAccError } = await db.from('accounts').select('balance').eq('id', newAccountId).eq('user_id', authUser.id).single();
+        if (newAccError || !newAccount) return res.status(404).json({ error: 'New account not found' });
+        
         const newBalance = type === 'income' ? newAccount.balance + newAmount : newAccount.balance - newAmount;
         await db.from('accounts').update({ balance: newBalance }).eq('id', newAccountId);
         
