@@ -307,8 +307,8 @@ export default async function handler(req, res) {
         try {
           const { accountId, type, category, amount, currency, date, description } = req.body;
           
-          // Validate input
-          if (!accountId || !type || !category || amount === undefined || !currency || !date) {
+          // Validate input - relaxed for accountId to allow 0 if that's valid in the system
+          if (accountId === undefined || !type || !category || amount === undefined || !currency || !date) {
             return res.status(400).json({ error: 'Missing required fields', received: { accountId, type, category, amount, currency, date } });
           }
           
