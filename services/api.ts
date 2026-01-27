@@ -19,6 +19,27 @@ const handleAuthError = (status: number) => {
   }
 };
 
+const mapAccount = (row: any): Account => ({
+  id: row.id,
+  userId: row.user_id ?? row.userId,
+  name: row.name,
+  type: row.type,
+  currency: row.currency,
+  balance: row.balance
+});
+
+const mapTransaction = (row: any): Transaction => ({
+  id: row.id,
+  userId: row.user_id ?? row.userId,
+  accountId: row.account_id ?? row.accountId,
+  type: row.type,
+  category: row.category,
+  amount: row.amount,
+  currency: row.currency,
+  date: row.date,
+  description: row.description
+});
+
 // --- Auth Services ---
 
 export const registerUser = async (username: string, password: string): Promise<{ token: string; user: User }> => {
@@ -123,7 +144,8 @@ export const getAccounts = async (): Promise<Account[]> => {
   });
 
   if (!response.ok) throw new Error('Failed to fetch accounts');
-  return response.json();
+  const data = await response.json();
+  return Array.isArray(data) ? data.map(mapAccount) : [];
 };
 
 export const createAccount = async (name: string, currency: 'EUR'|'BGN'|'USD', balance: number = 0): Promise<Account> => {
@@ -137,7 +159,8 @@ export const createAccount = async (name: string, currency: 'EUR'|'BGN'|'USD', b
     const error = await response.json().catch(() => ({ error: 'Failed to create account' }));
     throw new Error(error.error || 'Failed to create account');
   }
-  return response.json();
+  const data = await response.json();
+  return mapAccount(data);
 };
 
 export const updateAccountBalance = async (accountId: string | number, newBalance: number): Promise<void> => {
@@ -177,7 +200,8 @@ export const addTransaction = async (data: {
   });
 
   if (!response.ok) throw new Error('Failed to add transaction');
-  return response.json();
+  const payload = await response.json();
+  return mapTransaction(payload);
 };
 
 export const getTransactions = async (): Promise<Transaction[]> => {
@@ -189,7 +213,8 @@ export const getTransactions = async (): Promise<Transaction[]> => {
     handleAuthError(response.status);
     throw new Error('Failed to fetch transactions');
   }
-  return response.json();
+  const data = await response.json();
+  return Array.isArray(data) ? data.map(mapTransaction) : [];
 };
 
 export const updateTransaction = async (txId: number, data: {
