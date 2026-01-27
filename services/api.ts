@@ -207,7 +207,10 @@ export const updateTransaction = async (txId: number, data: {
     body: JSON.stringify(data)
   });
 
-  if (!response.ok) throw new Error('Failed to update transaction');
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ error: 'Failed to update transaction' }));
+    throw new Error(err.error || 'Failed to update transaction');
+  }
 };
 
 export const deleteTransaction = async (txId: number): Promise<void> => {

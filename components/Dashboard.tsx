@@ -392,6 +392,20 @@ const Dashboard: React.FC<Props> = ({ transactions, accounts, onUpdate }) => {
                         />
                     </div>
                     <div>
+                        <label className="block text-xs text-slate-400 mb-1.5">Account</label>
+                        <select
+                            value={editingTx.accountId}
+                            onChange={(e) => setEditingTx({...editingTx, accountId: parseInt(e.target.value)})}
+                            className="w-full h-12 bg-slate-800/50 border border-slate-700 rounded-lg px-3 text-white text-base"
+                        >
+                            {accounts.map(acc => (
+                                <option key={acc.id} value={acc.id} className="bg-slate-900">
+                                    {acc.name} ({acc.currency})
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                    <div>
                         <label className="block text-xs text-slate-400 mb-1.5">Description</label>
                         <input 
                             type="text" 
