@@ -1,4 +1,5 @@
 import React, { useEffect, useState, lazy, Suspense } from 'react';
+import { Analytics } from '@vercel/analytics/react';
 import Auth from './components/Auth';
 import { ToastContainer } from './components/ToastContainer';
 import { getCurrentUser, logoutUser, getTransactions, addTransaction, getAccounts, transferMoney, fetchUserProfile } from './services/api';
@@ -120,6 +121,7 @@ const App: React.FC = () => {
     return (
       <ToastContainer>
         <Auth onLogin={handleLogin} />
+        <Analytics />
       </ToastContainer>
     );
   }
@@ -257,6 +259,7 @@ const App: React.FC = () => {
         </Suspense>
       </main>
     </div>
+    <Analytics />
   </ToastContainer>
   );
 }
