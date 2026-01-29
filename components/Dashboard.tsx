@@ -28,9 +28,10 @@ const Dashboard: React.FC<Props> = ({ transactions, accounts, onUpdate }) => {
 
   const isTransferCategory = (category: string) => category.toLowerCase().includes('transfer');
   const isLoanCategory = (category: string) => category.toLowerCase().includes('loan');
+  const isLoanRepaidCategory = (category: string) => category.toLowerCase().includes('loan repaid');
 
   const nonTransferTransactions = useMemo(
-    () => transactions.filter(t => !isTransferCategory(t.category) && !isLoanCategory(t.category)),
+    () => transactions.filter(t => !isTransferCategory(t.category) && !isLoanRepaidCategory(t.category)),
     [transactions]
   );
   
