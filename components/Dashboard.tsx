@@ -34,6 +34,27 @@ const Dashboard: React.FC<Props> = ({ transactions, accounts, onUpdate }) => {
     () => transactions.filter(t => !isTransferCategory(t.category) && !isLoanRepaidCategory(t.category)),
     [transactions]
   );
+
+  // Track which loans have already been repaid by matching repayment descriptions
+  const repaidLoanIds = useMemo(() => {
+    const repaidIds = new Set<string>();
+    const repaymentTxs = transactions.filter(t => isLoanRepaidCategory(t.category));
+    
+    transactions.forEach(loan => {
+      if (loan.category === 'Loan Given' || loan.category === 'Loan Received') {
+        // Check if there's a repayment transaction that matches this loan
+        const hasRepayment = repaymentTxs.some(repay => 
+          repay.description === `Repayment: ${loan.description}` &&
+          repay.amount === loan.amount &&
+          repay.accountId === loan.accountId
+        );
+        if (hasRepayment) {
+          repaidIds.add(loan.id);
+        }
+      }
+    });
+    return repaidIds;
+  }, [transactions]);
   
   const stats = useMemo(() => {
     // 1. Calculate Net Worth in EUR
@@ -315,6 +336,7 @@ const Dashboard: React.FC<Props> = ({ transactions, accounts, onUpdate }) => {
         <div className="max-h-[400px] overflow-y-auto">
             {[...nonTransferTransactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(t => {
               const isLoan = t.category === 'Loan Given' || t.category === 'Loan Received';
+              const isRepaid = repaidLoanIds.has(t.id);
               return (
             <div key={t.id} className="p-3 md:p-4 border-b border-slate-700/30 last:border-0 active:bg-slate-700/30 md:hover:bg-slate-700/20 transition-colors group">
                 <div className="flex justify-between items-start gap-3">
@@ -322,8 +344,8 @@ const Dashboard: React.FC<Props> = ({ transactions, accounts, onUpdate }) => {
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="text-white text-sm font-medium truncate">{t.category}</p>
                       {isLoan && (
-                        <span className="text-xs bg-orange-500/15 text-orange-400 px-2 py-0.5 rounded-md border border-orange-500/20 shrink-0">
-                          {t.category === 'Loan Given' ? 'Lent' : 'Borrowed'}
+                        <span className={`text-xs px-2 py-0.5 rounded-md border shrink-0 ${isRepaid ? 'bg-teal-500/15 text-teal-400 border-teal-500/20' : 'bg-orange-500/15 text-orange-400 border-orange-500/20'}`}>
+                          {isRepaid ? 'Repaid' : (t.category === 'Loan Given' ? 'Lent' : 'Borrowed')}
                         </span>
                       )}
                     </div>
@@ -341,7 +363,7 @@ const Dashboard: React.FC<Props> = ({ transactions, accounts, onUpdate }) => {
                     </span>
                     {/* Action buttons - larger touch targets on mobile, compact on desktop hover */}
                     <div className="flex gap-1 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                      {isLoan && (
+                      {isLoan && !isRepaid && (
                         <button 
                           onClick={() => handleRepayLoan(t)}
                           className="p-2 md:p-1.5 text-slate-400 hover:text-teal-400 active:text-teal-500 bg-slate-800/80 rounded-lg touch-manipulation"
