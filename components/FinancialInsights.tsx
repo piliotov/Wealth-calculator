@@ -27,21 +27,24 @@ const FinancialInsights: React.FC<Props> = ({ accounts, transactions }) => {
     
     const recentTx = transactions.filter(t => new Date(t.date) >= thirtyDaysAgo);
     
-    // Calculate income and expenses
+    // Helper to identify reimbursable transactions (excluded from insights)
+    const isReimbursable = (category: string) => category.toLowerCase() === 'reimbursable';
+    
+    // Calculate income and expenses (excluding reimbursables)
     const income = recentTx
-      .filter(t => t.type === 'income')
+      .filter(t => t.type === 'income' && !isReimbursable(t.category))
       .reduce((sum, t) => sum + toEUR(t.amount, t.currency as Currency, rates), 0);
     
     const expenses = recentTx
-      .filter(t => t.type === 'expense')
+      .filter(t => t.type === 'expense' && !isReimbursable(t.category))
       .reduce((sum, t) => sum + toEUR(t.amount, t.currency as Currency, rates), 0);
     
     // Savings rate
     const savingsRate = income > 0 ? ((income - expenses) / income) * 100 : 0;
     
-    // Category breakdown (converted to EUR)
+    // Category breakdown (converted to EUR) - excluding reimbursables
     const categoryBreakdown = recentTx
-      .filter(t => t.type === 'expense')
+      .filter(t => t.type === 'expense' && !isReimbursable(t.category))
       .reduce((acc, t) => {
         const amountEUR = toEUR(t.amount, t.currency as Currency, rates);
         acc[t.category] = (acc[t.category] || 0) + amountEUR;
@@ -73,16 +76,16 @@ const FinancialInsights: React.FC<Props> = ({ accounts, transactions }) => {
     });
     
     const prevMonthExpenses = prevMonthTx
-      .filter(t => t.type === 'expense')
+      .filter(t => t.type === 'expense' && !isReimbursable(t.category))
       .reduce((sum, t) => sum + toEUR(t.amount, t.currency as Currency, rates), 0);
     
     const expenseChange = prevMonthExpenses > 0 
       ? ((expenses - prevMonthExpenses) / prevMonthExpenses) * 100 
       : 0;
     
-    // Find largest expense (sort by EUR equivalent)
+    // Find largest expense (sort by EUR equivalent) - excluding reimbursables
     const largestExpense = recentTx
-      .filter(t => t.type === 'expense')
+      .filter(t => t.type === 'expense' && !isReimbursable(t.category))
       .sort((a, b) => toEUR(b.amount, b.currency as Currency, rates) - toEUR(a.amount, a.currency as Currency, rates))[0];
     
     // Account health scores (using EUR equivalent for health check)

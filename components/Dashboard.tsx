@@ -29,6 +29,7 @@ const Dashboard: React.FC<Props> = ({ transactions, accounts, onUpdate }) => {
   const isTransferCategory = (category: string) => category.toLowerCase().includes('transfer');
   const isLoanCategory = (category: string) => category.toLowerCase().includes('loan');
   const isLoanRepaidCategory = (category: string) => category.toLowerCase().includes('loan repaid');
+  const isReimbursableCategory = (category: string) => category.toLowerCase() === 'reimbursable';
 
   const nonTransferTransactions = useMemo(
     () => transactions.filter(t => !isTransferCategory(t.category) && !isLoanRepaidCategory(t.category)),
@@ -65,26 +66,26 @@ const Dashboard: React.FC<Props> = ({ transactions, accounts, onUpdate }) => {
     });
 
     // 2. Recent Spending stats (Last 30 days) - Displayed in EUR approximation for aggregate
-    const income = transactions.filter(t => t.type === 'income').reduce((acc, t) => {
+    const income = transactions.filter(t => t.type === 'income' && !isReimbursableCategory(t.category)).reduce((acc, t) => {
       return acc + toEUR(t.amount, t.currency as Currency, rates);
     }, 0);
     
-    const expenses = transactions.filter(t => t.type === 'expense' && !isTransferCategory(t.category) && !isLoanCategory(t.category)).reduce((acc, t) => {
+    const expenses = transactions.filter(t => t.type === 'expense' && !isTransferCategory(t.category) && !isLoanCategory(t.category) && !isReimbursableCategory(t.category)).reduce((acc, t) => {
       return acc + toEUR(t.amount, t.currency as Currency, rates);
     }, 0);
 
-    // 3. Category Breakdown (Expenses) - Exclude transfers
+    // 3. Category Breakdown (Expenses) - Exclude transfers, loans, and reimbursables
     const categories: Record<string, number> = {};
-    transactions.filter(t => t.type === 'expense' && !isTransferCategory(t.category) && !isLoanCategory(t.category)).forEach(t => {
+    transactions.filter(t => t.type === 'expense' && !isTransferCategory(t.category) && !isLoanCategory(t.category) && !isReimbursableCategory(t.category)).forEach(t => {
       const amountInEUR = toEUR(t.amount, t.currency as Currency, rates);
       categories[t.category] = (categories[t.category] || 0) + amountInEUR;
     });
     
     const pieData = Object.entries(categories).map(([name, value]) => ({ name, value }));
 
-    // 3b. Income Categories - Exclude transfers
+    // 3b. Income Categories - Exclude transfers, loans, and reimbursables
     const incomeCategories: Record<string, number> = {};
-    transactions.filter(t => t.type === 'income' && !isTransferCategory(t.category) && !isLoanCategory(t.category)).forEach(t => {
+    transactions.filter(t => t.type === 'income' && !isTransferCategory(t.category) && !isLoanCategory(t.category) && !isReimbursableCategory(t.category)).forEach(t => {
       const amountInEUR = toEUR(t.amount, t.currency as Currency, rates);
       incomeCategories[t.category] = (incomeCategories[t.category] || 0) + amountInEUR;
     });

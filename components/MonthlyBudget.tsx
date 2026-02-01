@@ -75,12 +75,16 @@ const MonthlyBudget: React.FC<Props> = ({ transactions }) => {
   const monthlyData = useMemo(() => {
     const [year, month] = selectedMonth.split('-').map(Number);
     
+    // Helper to identify reimbursable transactions (excluded from budget)
+    const isReimbursable = (category: string) => category.toLowerCase() === 'reimbursable';
+    
     const monthTransactions = transactions.filter(t => {
       const txDate = new Date(t.date);
       return txDate.getFullYear() === year && 
              txDate.getMonth() + 1 === month &&
              t.type === 'expense' &&
-             t.category !== 'Transfer Out';
+             t.category !== 'Transfer Out' &&
+             !isReimbursable(t.category);
     });
 
     // Calculate spending per category in EUR

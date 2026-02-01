@@ -100,7 +100,7 @@ const TransactionForm: React.FC<Props> = ({ accounts, onAdd }) => {
 
   const categories = type === 'income'
     ? ['Salary', 'Freelance', 'Investment', 'Other']
-    : ['Food', 'Housing', 'Transport', 'Entertainment', 'Utilities', 'Shopping', 'Health', 'Travel', 'Other'];
+    : ['Food', 'Housing', 'Transport', 'Entertainment', 'Utilities', 'Shopping', 'Health', 'Travel', 'Reimbursable', 'Other'];
 
   return (
     <div className="bg-slate-800/50 rounded-2xl border border-slate-700/50 overflow-hidden">
