@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Account, Currency } from '../types';
-import { ArrowRightLeft, Loader2, Plus } from 'lucide-react';
+import { ArrowRightLeft, Loader2, Plus, CalendarDays } from 'lucide-react';
 import { useToast } from './ToastContainer';
 import { fetchExchangeRates, convertCurrency, getExchangeRates, type ExchangeRates } from '../services/exchangeRates';
 
@@ -16,6 +16,7 @@ const TransferForm: React.FC<Props> = ({ accounts, onTransfer }) => {
   const [description, setDescription] = useState('');
   const [loading, setLoading] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
+  const [transferDate, setTransferDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [rates, setRates] = useState<ExchangeRates>(getExchangeRates());
   const { showToast } = useToast();
 
@@ -45,12 +46,13 @@ const TransferForm: React.FC<Props> = ({ accounts, onTransfer }) => {
       description: description || `Transfer from ${fromAccount?.name} to ${toAccount?.name}`,
       fromCurrency: fromAccount?.currency || 'EUR',
       toCurrency: toAccount?.currency || 'EUR',
-      date: new Date().toISOString()
+      date: new Date(transferDate + 'T12:00:00').toISOString()
     });
     
     setLoading(false);
     setAmount('');
     setDescription('');
+    setTransferDate(new Date().toISOString().split('T')[0]);
     setIsExpanded(false);
     showToast(`Transfer completed successfully`, 'success');
   };
@@ -157,6 +159,25 @@ const TransferForm: React.FC<Props> = ({ accounts, onTransfer }) => {
               className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-blue-500"
               placeholder="e.g., Monthly savings"
             />
+          </div>
+
+          <div>
+            <label className="block text-xs text-slate-500 mb-1.5 flex items-center gap-1">
+              <CalendarDays className="w-3.5 h-3.5" />
+              Transfer Date
+            </label>
+            <input
+              type="date"
+              value={transferDate}
+              onChange={(e) => setTransferDate(e.target.value)}
+              className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-blue-500"
+            />
+            {transferDate !== new Date().toISOString().split('T')[0] && (
+              <p className="text-xs text-amber-400 mt-1.5 flex items-center gap-1">
+                <CalendarDays className="w-3 h-3" />
+                {new Date(transferDate + 'T12:00:00') > new Date() ? 'Scheduled for' : 'Dated'} {new Date(transferDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+              </p>
+            )}
           </div>
 
           <button

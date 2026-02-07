@@ -435,3 +435,75 @@ export const getSharedExpenseBalances = async (): Promise<Array<{
   }
   return response.json();
 };
+
+// --- Goals Services ---
+
+interface GoalData {
+  id: string;
+  name: string;
+  targetAmount: number;
+  currentAmount: number;
+  currency: string;
+  deadline?: string | null;
+  category: string;
+  color: string;
+  createdAt: string;
+}
+
+export const getGoals = async (): Promise<GoalData[]> => {
+  const response = await fetch(`${API_URL}/goals`, {
+    headers: getHeaders()
+  });
+
+  if (!response.ok) {
+    console.error('Failed to fetch goals:', response.status);
+    return [];
+  }
+  return response.json();
+};
+
+export const createGoal = async (data: {
+  name: string;
+  targetAmount: number;
+  currentAmount: number;
+  currency: string;
+  deadline?: string | null;
+  category: string;
+  color: string;
+}): Promise<GoalData> => {
+  const response = await fetch(`${API_URL}/goals`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify(data)
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Failed to create goal' }));
+    throw new Error(error.error || 'Failed to create goal');
+  }
+  return response.json();
+};
+
+export const updateGoal = async (goalId: string, data: {
+  currentAmount?: number;
+  name?: string;
+  targetAmount?: number;
+  deadline?: string | null;
+}): Promise<void> => {
+  const response = await fetch(`${API_URL}/goals/${goalId}`, {
+    method: 'PUT',
+    headers: getHeaders(),
+    body: JSON.stringify(data)
+  });
+
+  if (!response.ok) throw new Error('Failed to update goal');
+};
+
+export const deleteGoal = async (goalId: string): Promise<void> => {
+  const response = await fetch(`${API_URL}/goals/${goalId}`, {
+    method: 'DELETE',
+    headers: getHeaders()
+  });
+
+  if (!response.ok) throw new Error('Failed to delete goal');
+};

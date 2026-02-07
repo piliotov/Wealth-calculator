@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Target, Plus, Trash2, TrendingUp, Calendar, Sparkles } from 'lucide-react';
+import { Target, Plus, Trash2, TrendingUp, Calendar, Sparkles, Loader2 } from 'lucide-react';
 import { useToast } from './ToastContainer';
+import { getGoals, createGoal, updateGoal, deleteGoal } from '../services/api';
 
 interface Goal {
   id: string;
@@ -31,6 +32,7 @@ const GOAL_CATEGORIES = [
 
 const GoalsTracker: React.FC<Props> = ({ userId }) => {
   const [goals, setGoals] = useState<Goal[]>([]);
+  const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [newGoal, setNewGoal] = useState({
     name: '',
@@ -42,54 +44,108 @@ const GoalsTracker: React.FC<Props> = ({ userId }) => {
   });
   const { showToast } = useToast();
 
-  // Load goals from localStorage
+  // Load goals from server, with localStorage fallback for migration
   useEffect(() => {
-    const saved = localStorage.getItem(`goals_${userId}`);
-    if (saved) {
-      setGoals(JSON.parse(saved));
-    }
+    const loadGoals = async () => {
+      setLoading(true);
+      try {
+        const serverGoals = await getGoals();
+        
+        // If server has no goals, check localStorage for migration
+        if (serverGoals.length === 0) {
+          const saved = localStorage.getItem(`goals_${userId}`);
+          if (saved) {
+            const localGoals: Goal[] = JSON.parse(saved);
+            // Migrate local goals to server
+            for (const goal of localGoals) {
+              const category = GOAL_CATEGORIES.find(c => c.name === goal.category) || GOAL_CATEGORIES[0];
+              try {
+                await createGoal({
+                  name: goal.name,
+                  targetAmount: goal.targetAmount,
+                  currentAmount: goal.currentAmount,
+                  currency: goal.currency,
+                  deadline: goal.deadline || null,
+                  category: goal.category,
+                  color: category.color,
+                });
+              } catch (err) {
+                console.warn('Failed to migrate goal:', goal.name, err);
+              }
+            }
+            // Re-fetch from server after migration
+            const migrated = await getGoals();
+            setGoals(migrated as Goal[]);
+            // Clear localStorage after successful migration
+            localStorage.removeItem(`goals_${userId}`);
+            if (localGoals.length > 0) {
+              showToast('Goals synced to cloud ☁️', 'success');
+            }
+          } else {
+            setGoals([]);
+          }
+        } else {
+          setGoals(serverGoals as Goal[]);
+          // Clean up any stale localStorage
+          localStorage.removeItem(`goals_${userId}`);
+        }
+      } catch (err) {
+        console.error('Failed to load goals:', err);
+        // Fallback to localStorage if server fails
+        const saved = localStorage.getItem(`goals_${userId}`);
+        if (saved) setGoals(JSON.parse(saved));
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadGoals();
   }, [userId]);
 
-  // Save goals to localStorage
-  const saveGoals = (updatedGoals: Goal[]) => {
-    setGoals(updatedGoals);
-    localStorage.setItem(`goals_${userId}`, JSON.stringify(updatedGoals));
-  };
-
-  const handleAddGoal = (e: React.FormEvent) => {
+  const handleAddGoal = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newGoal.name || !newGoal.targetAmount) return;
 
     const category = GOAL_CATEGORIES.find(c => c.name === newGoal.category) || GOAL_CATEGORIES[0];
     
-    const goal: Goal = {
-      id: crypto.randomUUID(),
-      name: newGoal.name,
-      targetAmount: parseFloat(newGoal.targetAmount),
-      currentAmount: parseFloat(newGoal.currentAmount) || 0,
-      currency: newGoal.currency,
-      deadline: newGoal.deadline || undefined,
-      category: newGoal.category,
-      color: category.color,
-      createdAt: new Date().toISOString(),
-    };
-
-    saveGoals([...goals, goal]);
-    setNewGoal({ name: '', targetAmount: '', currentAmount: '', currency: 'EUR', deadline: '', category: 'Emergency Fund' });
-    setShowForm(false);
-    showToast('Goal created! 🎯', 'success');
+    try {
+      const created = await createGoal({
+        name: newGoal.name,
+        targetAmount: parseFloat(newGoal.targetAmount),
+        currentAmount: parseFloat(newGoal.currentAmount) || 0,
+        currency: newGoal.currency,
+        deadline: newGoal.deadline || null,
+        category: newGoal.category,
+        color: category.color,
+      });
+      
+      setGoals(prev => [created as Goal, ...prev]);
+      setNewGoal({ name: '', targetAmount: '', currentAmount: '', currency: 'EUR', deadline: '', category: 'Emergency Fund' });
+      setShowForm(false);
+      showToast('Goal created! 🎯', 'success');
+    } catch (err) {
+      showToast('Failed to create goal', 'error');
+    }
   };
 
-  const handleUpdateProgress = (goalId: string, newAmount: number) => {
-    const updated = goals.map(g => 
-      g.id === goalId ? { ...g, currentAmount: Math.max(0, newAmount) } : g
-    );
-    saveGoals(updated);
+  const handleUpdateProgress = async (goalId: string, newAmount: number) => {
+    try {
+      await updateGoal(goalId, { currentAmount: Math.max(0, newAmount) });
+      setGoals(prev => prev.map(g => 
+        g.id === goalId ? { ...g, currentAmount: Math.max(0, newAmount) } : g
+      ));
+    } catch (err) {
+      showToast('Failed to update goal', 'error');
+    }
   };
 
-  const handleDeleteGoal = (goalId: string) => {
-    saveGoals(goals.filter(g => g.id !== goalId));
-    showToast('Goal deleted', 'success');
+  const handleDeleteGoal = async (goalId: string) => {
+    try {
+      await deleteGoal(goalId);
+      setGoals(prev => prev.filter(g => g.id !== goalId));
+      showToast('Goal deleted', 'success');
+    } catch (err) {
+      showToast('Failed to delete goal', 'error');
+    }
   };
 
   const formatCurrency = (amount: number, currency: string) => 
@@ -210,7 +266,12 @@ const GoalsTracker: React.FC<Props> = ({ userId }) => {
       )}
 
       {/* Goals List */}
-      {goals.length === 0 ? (
+      {loading ? (
+        <div className="text-center py-12">
+          <Loader2 className="w-8 h-8 text-indigo-400 mx-auto mb-4 animate-spin" />
+          <p className="text-slate-400">Loading goals...</p>
+        </div>
+      ) : goals.length === 0 ? (
         <div className="text-center py-12">
           <Sparkles className="w-12 h-12 text-slate-600 mx-auto mb-4" />
           <p className="text-slate-400">No savings goals yet</p>

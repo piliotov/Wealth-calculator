@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Account, Friend } from '../types';
-import { Plus, Loader2, Users } from 'lucide-react';
+import { Plus, Loader2, Users, CalendarDays } from 'lucide-react';
 import { useToast } from './ToastContainer';
 import { getFriends, createSharedExpense } from '../services/api';
 
@@ -15,6 +15,7 @@ const TransactionForm: React.FC<Props> = ({ accounts, onAdd }) => {
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState('Food');
   const [description, setDescription] = useState('');
+  const [transactionDate, setTransactionDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [loading, setLoading] = useState(false);
   const { showToast } = useToast();
 
@@ -65,7 +66,7 @@ const TransactionForm: React.FC<Props> = ({ accounts, onAdd }) => {
         category,
         description: shareWithFriend && selectedFriendId ? `[Shared] ${description}` : description,
         currency: selectedAccount?.currency || 'EUR',
-        date: new Date().toISOString()
+        date: new Date(transactionDate + 'T12:00:00').toISOString()
       });
 
       // If sharing with friend, create a shared expense (only YOUR payment)
@@ -88,6 +89,7 @@ const TransactionForm: React.FC<Props> = ({ accounts, onAdd }) => {
       // Reset form
       setAmount('');
       setDescription('');
+      setTransactionDate(new Date().toISOString().split('T')[0]);
       setCategory(type === 'income' ? 'Salary' : 'Food');
       setShareWithFriend(false);
       setSelectedFriendId('');
@@ -191,6 +193,25 @@ const TransactionForm: React.FC<Props> = ({ accounts, onAdd }) => {
             className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-blue-500"
             placeholder="What's this for?"
           />
+        </div>
+
+        <div>
+          <label className="block text-xs text-slate-500 mb-1.5 flex items-center gap-1">
+            <CalendarDays className="w-3.5 h-3.5" />
+            Date
+          </label>
+          <input
+            type="date"
+            value={transactionDate}
+            onChange={(e) => setTransactionDate(e.target.value)}
+            className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-blue-500"
+          />
+          {transactionDate !== new Date().toISOString().split('T')[0] && (
+            <p className="text-xs text-amber-400 mt-1.5 flex items-center gap-1">
+              <CalendarDays className="w-3 h-3" />
+              {new Date(transactionDate + 'T12:00:00') > new Date() ? 'Scheduled for' : 'Dated'} {new Date(transactionDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+            </p>
+          )}
         </div>
 
         {/* Share with Friend - Only for expenses */}

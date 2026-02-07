@@ -447,6 +447,15 @@ const Dashboard: React.FC<Props> = ({ transactions, accounts, onUpdate }) => {
                             className="w-full h-12 bg-slate-800/50 border border-slate-700 rounded-lg px-3 text-white text-base"
                         />
                     </div>
+                    <div>
+                        <label className="block text-xs text-slate-400 mb-1.5">Date</label>
+                        <input 
+                            type="date" 
+                            value={editingTx.date ? new Date(editingTx.date).toISOString().split('T')[0] : ''}
+                            onChange={(e) => setEditingTx({...editingTx, date: new Date(e.target.value + 'T12:00:00').toISOString()})}
+                            className="w-full h-12 bg-slate-800/50 border border-slate-700 rounded-lg px-3 text-white text-base"
+                        />
+                    </div>
                     
                     <button type="submit" className="w-full h-12 bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white rounded-lg flex justify-center items-center gap-2 font-medium mt-6">
                         <Save className="w-4 h-4" />

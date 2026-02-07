@@ -3,7 +3,7 @@ import Auth from './components/Auth';
 import { ToastContainer } from './components/ToastContainer';
 import { getCurrentUser, logoutUser, getTransactions, addTransaction, getAccounts, transferMoney, fetchUserProfile } from './services/api';
 import { User, Transaction, Account, AppView } from './types';
-import { LayoutDashboard, LogOut, Calculator, User as UserIcon, PiggyBank, Target, RefreshCw, PieChart, Menu, X, Loader2, Users } from 'lucide-react';
+import { LayoutDashboard, LogOut, Calculator, User as UserIcon, PiggyBank, Target, RefreshCw, Menu, X, Loader2, Users } from 'lucide-react';
 
 // Lazy load components for better code splitting
 const Dashboard = lazy(() => import('./components/Dashboard'));
@@ -15,7 +15,6 @@ const Profile = lazy(() => import('./components/Profile'));
 const MonthlyBudget = lazy(() => import('./components/MonthlyBudget'));
 const GoalsTracker = lazy(() => import('./components/GoalsTracker'));
 const RecurringTransactions = lazy(() => import('./components/RecurringTransactions'));
-const FinancialInsights = lazy(() => import('./components/FinancialInsights'));
 const SharedExpenses = lazy(() => import('./components/SharedExpenses'));
 
 const App: React.FC = () => {
@@ -32,7 +31,6 @@ const App: React.FC = () => {
     { view: AppView.GOALS, label: 'Goals', icon: Target },
     { view: AppView.SHARED_EXPENSES, label: 'Split', icon: Users },
     { view: AppView.RECURRING, label: 'Bills', icon: RefreshCw },
-    { view: AppView.INSIGHTS, label: 'Insights', icon: PieChart },
     { view: AppView.CALCULATOR, label: 'Salary', icon: Calculator },
   ];
 
@@ -221,7 +219,7 @@ const App: React.FC = () => {
 
         {/* VIEW: BUDGET */}
         <div className={view === AppView.BUDGET ? 'block' : 'hidden'}>
-            <MonthlyBudget transactions={transactions} />
+            <MonthlyBudget transactions={transactions} accounts={accounts} />
         </div>
 
         {/* VIEW: CALCULATOR */}
@@ -237,11 +235,6 @@ const App: React.FC = () => {
         {/* VIEW: RECURRING */}
         <div className={view === AppView.RECURRING ? 'block' : 'hidden'}>
             <RecurringTransactions userId={user.id} />
-        </div>
-
-        {/* VIEW: INSIGHTS */}
-        <div className={view === AppView.INSIGHTS ? 'block' : 'hidden'}>
-            <FinancialInsights accounts={accounts} transactions={transactions} />
         </div>
 
         {/* VIEW: SHARED EXPENSES */}

@@ -386,12 +386,12 @@ export default async function handler(req, res) {
     // ==================== TRANSFERS ====================
     if (path === '/transfers' && method === 'POST') {
       if (!authUser) return res.status(401).json({ error: 'Unauthorized' });
-      const { fromAccountId, toAccountId, amount, description, fromCurrency, toCurrency } = req.body;
+      const { fromAccountId, toAccountId, amount, description, fromCurrency, toCurrency, date } = req.body;
       
       const RATES = { EUR: 1, BGN: 1.95583, USD: 1.08, RSD: 117.25, HUF: 395.50 };
       const amountInEUR = amount / RATES[fromCurrency];
       const convertedAmount = amountInEUR * RATES[toCurrency];
-      const now = new Date().toISOString();
+      const transferDate = date || new Date().toISOString();
       
       const { data: fromAccount } = await db.from('accounts').select('balance').eq('id', fromAccountId).eq('user_id', authUser.id).single();
       const { data: toAccount } = await db.from('accounts').select('balance').eq('id', toAccountId).eq('user_id', authUser.id).single();
@@ -400,8 +400,8 @@ export default async function handler(req, res) {
       await db.from('accounts').update({ balance: toAccount.balance + convertedAmount }).eq('id', toAccountId);
       
       await db.from('transactions').insert([
-        { user_id: authUser.id, account_id: fromAccountId, type: 'expense', category: 'Transfer Out', amount, currency: fromCurrency, date: now, description },
-        { user_id: authUser.id, account_id: toAccountId, type: 'income', category: 'Transfer In', amount: convertedAmount, currency: toCurrency, date: now, description }
+        { user_id: authUser.id, account_id: fromAccountId, type: 'expense', category: 'Transfer Out', amount, currency: fromCurrency, date: transferDate, description },
+        { user_id: authUser.id, account_id: toAccountId, type: 'income', category: 'Transfer In', amount: convertedAmount, currency: toCurrency, date: transferDate, description }
       ]);
       
       return res.json({ success: true });
@@ -608,6 +608,96 @@ export default async function handler(req, res) {
       
       if (method === 'DELETE') {
         await db.from('shared_expenses').delete().eq('id', seId).eq('creator_id', authUser.id);
+        return res.json({ success: true });
+      }
+    }
+
+    // ==================== GOALS ====================
+    if (path === '/goals' && method === 'GET') {
+      if (!authUser) return res.status(401).json({ error: 'Unauthorized' });
+      
+      const { data: goals, error } = await db.from('goals').select('*').eq('user_id', authUser.id).order('created_at', { ascending: false });
+      if (error) {
+        console.error('Goals fetch error:', error);
+        return res.json([]);
+      }
+      
+      return res.json((goals || []).map(g => ({
+        id: g.id,
+        name: g.name,
+        targetAmount: g.target_amount,
+        currentAmount: g.current_amount,
+        currency: g.currency,
+        deadline: g.deadline,
+        category: g.category,
+        color: g.color,
+        createdAt: g.created_at
+      })));
+    }
+
+    if (path === '/goals' && method === 'POST') {
+      if (!authUser) return res.status(401).json({ error: 'Unauthorized' });
+      const { name, targetAmount, currentAmount, currency, deadline, category, color } = req.body;
+      
+      const { data, error } = await db.from('goals').insert({
+        user_id: authUser.id,
+        name,
+        target_amount: targetAmount,
+        current_amount: currentAmount || 0,
+        currency: currency || 'EUR',
+        deadline: deadline || null,
+        category,
+        color,
+        created_at: new Date().toISOString()
+      }).select().single();
+      
+      if (error) {
+        console.error('Goal create error:', error);
+        return res.status(500).json({ error: 'Failed to create goal' });
+      }
+      
+      return res.json({
+        id: data.id,
+        name: data.name,
+        targetAmount: data.target_amount,
+        currentAmount: data.current_amount,
+        currency: data.currency,
+        deadline: data.deadline,
+        category: data.category,
+        color: data.color,
+        createdAt: data.created_at
+      });
+    }
+
+    const goalMatch = path.match(/^\/goals\/(.+)$/);
+    if (goalMatch) {
+      if (!authUser) return res.status(401).json({ error: 'Unauthorized' });
+      const goalId = goalMatch[1];
+      
+      if (method === 'PUT') {
+        const { currentAmount, name, targetAmount, deadline } = req.body;
+        const updates = {};
+        if (currentAmount !== undefined) updates.current_amount = currentAmount;
+        if (name !== undefined) updates.name = name;
+        if (targetAmount !== undefined) updates.target_amount = targetAmount;
+        if (deadline !== undefined) updates.deadline = deadline;
+        
+        if (Object.keys(updates).length === 0) return res.status(400).json({ error: 'No updates provided' });
+        
+        const { error } = await db.from('goals').update(updates).eq('id', goalId).eq('user_id', authUser.id);
+        if (error) {
+          console.error('Goal update error:', error);
+          return res.status(500).json({ error: 'Failed to update goal' });
+        }
+        return res.json({ success: true });
+      }
+      
+      if (method === 'DELETE') {
+        const { error } = await db.from('goals').delete().eq('id', goalId).eq('user_id', authUser.id);
+        if (error) {
+          console.error('Goal delete error:', error);
+          return res.status(500).json({ error: 'Failed to delete goal' });
+        }
         return res.json({ success: true });
       }
     }

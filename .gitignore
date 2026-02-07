@@ -75,3 +75,4 @@ fly.toml.local
 # Misc
 .cache/
 .turbo/
+scripts/migrate-goals.sql
