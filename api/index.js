@@ -114,7 +114,16 @@ export default async function handler(req, res) {
         .eq('username', username)
         .single();
       
-      if (error || !user) {
+      if (error) {
+        // PGRST116 = no rows returned (user doesn't exist)
+        if (error.code === 'PGRST116') {
+          return res.status(400).json({ error: 'User not found' });
+        }
+        console.error('Login DB error:', error);
+        return res.status(500).json({ error: 'Database error during login' });
+      }
+      
+      if (!user) {
         return res.status(400).json({ error: 'User not found' });
       }
       

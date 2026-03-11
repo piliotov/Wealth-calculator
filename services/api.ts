@@ -50,12 +50,12 @@ export const registerUser = async (username: string, password: string): Promise<
   });
 
   if (!response.ok) {
+    let message = `Registration failed: ${response.status} ${response.statusText}`;
     try {
       const error = await response.json();
-      throw new Error(error.error || 'Registration failed');
-    } catch (e) {
-      throw new Error(`Registration failed: ${response.status} ${response.statusText}`);
-    }
+      if (error.error) message = error.error;
+    } catch (_) { /* response wasn't JSON */ }
+    throw new Error(message);
   }
 
   const data = await response.json();
@@ -72,12 +72,12 @@ export const loginUser = async (username: string, password: string): Promise<{ t
   });
 
   if (!response.ok) {
+    let message = `Login failed: ${response.status} ${response.statusText}`;
     try {
       const error = await response.json();
-      throw new Error(error.error || 'Login failed');
-    } catch (e) {
-      throw new Error(`Login failed: ${response.status} ${response.statusText}`);
-    }
+      if (error.error) message = error.error;
+    } catch (_) { /* response wasn't JSON */ }
+    throw new Error(message);
   }
 
   const data = await response.json();
